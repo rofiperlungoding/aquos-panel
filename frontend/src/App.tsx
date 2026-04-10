@@ -46,7 +46,6 @@ function App() {
   const [history, setHistory] = useState<any[]>([]);
   const [repoUrl, setRepoUrl] = useState('');
   const [deploying, setDeploying] = useState(false);
-  const [ping, setPing] = useState('...');
 
   // Configure Axios with Token
   useEffect(() => {
