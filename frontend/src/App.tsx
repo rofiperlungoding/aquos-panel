@@ -13,6 +13,8 @@ function App() {
   const [repoUrl, setRepoUrl] = useState('');
   const [deploying, setDeploying] = useState(false);
   const [ping, setPing] = useState<string>('--');
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
   // Fetch data
   const fetchData = async () => {
@@ -30,11 +32,37 @@ function App() {
     }
   };
 
+  const checkUpdate = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/system/check-update`);
+      setUpdateAvailable(res.data.updateAvailable);
+    } catch (e) {}
+  };
+
   useEffect(() => {
     fetchData();
+    checkUpdate();
     const intv = setInterval(fetchData, 2000);
-    return () => clearInterval(intv);
+    const updateIntv = setInterval(checkUpdate, 30000); // Check updates every 30s
+    return () => {
+      clearInterval(intv);
+      clearInterval(updateIntv);
+    };
   }, []);
+
+  const triggerUpdate = async () => {
+    setUpdating(true);
+    try {
+      await axios.post(`${API_URL}/system/update`);
+      // Wait a few seconds for the backend to reload, then hard refresh
+      setTimeout(() => {
+        window.location.reload();
+      }, 5000);
+    } catch(e) {
+      alert("Update failed, check terminal");
+      setUpdating(false);
+    }
+  };
 
   const handleDeploy = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,8 +116,27 @@ function App() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto flex flex-col">
+        
+        {/* Updater Banner */}
+        {updateAvailable && (
+          <div className="bg-blue-600 text-white px-8 py-3 flex justify-between items-center transition-all">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <RefreshCw className={`w-4 h-4 ${updating ? 'animate-spin' : ''}`} />
+              {updating ? 'System is updating seamlessly without cutoff...' : 'A new Enterprise Platform Update is available!'}
+            </div>
+            {!updating && (
+              <button 
+                onClick={triggerUpdate}
+                className="bg-white text-blue-600 px-4 py-1.5 rounded text-xs font-bold uppercase tracking-wider hover:bg-blue-50 transition shadow-sm"
+              >
+                Apply & Seamless Reload
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Header */}
-        <header className="h-16 bg-white border-b border-[#dadce0] flex items-center px-8 shadow-sm z-10">
+        <header className="h-16 bg-white border-b border-[#dadce0] flex items-center px-8 shadow-sm shrink-0 z-10">
           <h1 className="text-xl text-[#202124] font-medium">Dashboard</h1>
         </header>
 

@@ -68,6 +68,36 @@ app.post('/api/projects/:name/action', async (req, res) => {
     }
 });
 
+// Auto Updater APIs
+const util = require('util');
+const { exec } = require('child_process');
+const execPromise = util.promisify(exec);
+
+app.get('/api/system/check-update', async (req, res) => {
+    try {
+        await execPromise('git fetch origin master');
+        const { stdout: local } = await execPromise('git rev-parse HEAD');
+        const { stdout: remote } = await execPromise('git rev-parse origin/master');
+        res.json({ 
+            updateAvailable: local.trim() !== remote.trim(),
+            local: local.trim(),
+            remote: remote.trim()
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/system/update', async (req, res) => {
+    res.json({ message: 'Update initiated' });
+    setTimeout(() => {
+        // Run git pull and restart aquos-panel silently
+        exec('git pull origin master && npm install && pm2 reload aquos-panel', (err) => {
+            if (err) exec('pm2 restart aquos-panel'); // Fallback
+        });
+    }, 1000);
+});
+
 // WebSocket for Terminal & Logs
 wss.on('connection', (ws, req) => {
     const urlParams = new URLSearchParams(req.url.split('?')[1]);
