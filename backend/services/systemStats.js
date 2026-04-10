@@ -3,6 +3,28 @@ const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
 
+let previousCpus = os.cpus();
+
+function getCpuUsage() {
+    const currentCpus = os.cpus();
+    let idleDiff = 0;
+    let totalDiff = 0;
+
+    for (let i = 0, len = currentCpus.length; i < len; i++) {
+        const cpu = currentCpus[i];
+        const prevCpu = previousCpus[i];
+        
+        for (const type in cpu.times) {
+            totalDiff += cpu.times[type] - prevCpu.times[type];
+        }
+        idleDiff += cpu.times.idle - prevCpu.times.idle;
+    }
+    
+    previousCpus = currentCpus;
+    if (totalDiff === 0) return 0;
+    return 1 - (idleDiff / totalDiff);
+}
+
 async function getStats() {
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
@@ -42,7 +64,7 @@ async function getStats() {
         cpu: {
             cores: cpus.length,
             model: cpus[0].model,
-            usageObj: loadAvg // Array of 1, 5, and 15 min load averages
+            usageObj: [getCpuUsage()]
         },
         disk: diskStats,
         uptime: uptime
