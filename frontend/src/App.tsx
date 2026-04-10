@@ -5,7 +5,7 @@ import {
   Terminal, Settings, LayoutDashboard, Copy
 } from 'lucide-react';
 
-const API_URL = 'http://localhost:2999/api';
+const API_URL = '/api';
 
 function App() {
   const [stats, setStats] = useState<any>(null);
