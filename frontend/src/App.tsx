@@ -88,187 +88,178 @@ function App() {
   };
 
   return (
-    <div className="flex h-screen bg-[#f8f9fa] text-[#202124] font-['Plus_Jakarta_Sans']">
-      {/* Sidebar */}
-      <aside className="w-72 bg-white border-r border-[#dadce0] flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
-        <div className="h-20 flex items-center px-8 border-b border-[#f1f3f4]">
+    <div className="flex h-screen bg-[#f8f9fa] text-[#202124] font-['Plus_Jakarta_Sans'] antialiased">
+      {/* Sidebar - Slimmed */}
+      <aside className="w-64 bg-white border-r border-[#dadce0] flex flex-col shadow-[2px_0_12px_rgba(0,0,0,0.01)] transition-all">
+        <div className="h-16 flex items-center px-6 border-b border-[#f1f3f4]">
           <div className="flex flex-col">
-            <span className="text-[#1a73e8] font-extrabold text-xl flex items-center gap-2 tracking-tight">
-              <Server className="w-7 h-7" /> Aquos Cloud
+            <span className="text-[#1a73e8] font-bold text-lg flex items-center gap-2 tracking-tight">
+              <Server className="w-6 h-6" /> Aquos Cloud
             </span>
-            <span className="text-[10px] text-[#5f6368] font-bold tracking-[0.1em] uppercase mt-1 opacity-60">
-              Enterprise v1.1.7
+            <span className="text-[9px] text-[#5f6368] font-black tracking-[0.1em] uppercase mt-0.5 opacity-60">
+              Enterprise v1.1.8
             </span>
           </div>
         </div>
 
-        <nav className="flex-1 p-6 space-y-2">
+        <nav className="flex-1 p-4 space-y-1">
           {updateAvailable && (
              <button 
                onClick={triggerUpdate}
                disabled={updating}
-               className="w-full mb-6 bg-[#fce8e6] text-[#d93025] p-5 rounded-[20px] text-sm font-bold flex items-center gap-3 border border-[#f9ab00]/20 animate-pulse transition-all hover:scale-[1.02]"
+               className="w-full mb-4 bg-[#fce8e6] text-[#d93025] p-3 rounded-[16px] text-[11px] font-black flex items-center gap-2 border border-[#d93025]/10 animate-pulse"
              >
-               <RefreshCcw className={`w-5 h-5 ${updating ? 'animate-spin' : ''}`} />
-               {updating ? 'APPLYING UPDATE...' : 'CLICK TO UPDATE NOW'}
+               <RefreshCcw className={`w-4 h-4 ${updating ? 'animate-spin' : ''}`} />
+               {updating ? 'UPDATING...' : 'UPDATE NOW'}
              </button>
           )}
 
-          <div className="bg-[#e8f0fe] text-[#1a73e8] p-4 rounded-[22px] flex items-center gap-4 font-bold text-sm shadow-sm border border-[#d2e3fc]">
-            <Activity className="w-5 h-5" /> Universal Compute
+          <div className="bg-[#e8f0fe] text-[#1a73e8] p-3 rounded-[14px] flex items-center gap-3 font-bold text-xs shadow-sm border border-[#d2e3fc]">
+            <Activity className="w-4 h-4" /> Universal Compute
           </div>
-          <div className="text-[#5f6368] p-4 rounded-[22px] flex items-center gap-4 font-semibold text-sm hover:bg-[#f1f3f4] cursor-not-allowed transition-all">
-            <TerminalIcon className="w-5 h-5" /> Cloud Shell
+          <div className="text-[#5f6368] p-3 rounded-[14px] flex items-center gap-3 font-bold text-xs hover:bg-[#f1f3f4] cursor-not-allowed transition-all opacity-80">
+            <TerminalIcon className="w-4 h-4" /> Cloud Shell
           </div>
-          <div className="text-[#5f6368] p-4 rounded-[22px] flex items-center gap-4 font-semibold text-sm hover:bg-[#f1f3f4] cursor-not-allowed transition-all">
-            <SettingsIcon className="w-5 h-5" /> Settings
+          <div className="text-[#5f6368] p-3 rounded-[14px] flex items-center gap-3 font-bold text-xs hover:bg-[#f1f3f4] cursor-not-allowed transition-all opacity-80">
+            <SettingsIcon className="w-4 h-4" /> Settings
           </div>
         </nav>
 
-        <div className="p-8 border-t border-[#f1f3f4]">
-          <div className="bg-[#f8f9fa] p-5 rounded-[24px] border border-[#f1f3f4]">
-            <div className="text-[10px] font-black text-[#5f6368] uppercase tracking-widest mb-2 opacity-60">Region Status</div>
-            <div className="flex items-center gap-2 text-sm font-bold text-[#34a853]">
-              <div className="w-2.5 h-2.5 bg-[#34a853] rounded-full animate-pulse"></div>
-              Jakarta-JP4-A
+        <div className="p-4 border-t border-[#f1f3f4]">
+          <div className="bg-[#f8f9fa] p-3 rounded-[16px] border border-[#f1f3f4]">
+            <div className="text-[9px] font-black text-[#5f6368] uppercase tracking-widest mb-1 opacity-60">Node</div>
+            <div className="flex items-center gap-2 text-[11px] font-black text-[#34a853]">
+              <div className="w-2 h-2 bg-[#34a853] rounded-full"></div>
+              Jakarta-JP4
             </div>
           </div>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-12 bg-[#f8f9fa]">
-        <header className="mb-14">
-          <h1 className="text-4xl font-extrabold text-[#202124] tracking-tight text-center md:text-left">System Status</h1>
-          <p className="text-[#5f6368] mt-2 font-medium italic opacity-80 text-center md:text-left">Infrastructure health monitoring & active workloads</p>
+      {/* Main Content - Compressed */}
+      <main className="flex-1 overflow-y-auto p-8 bg-[#f8f9fa]">
+        <header className="mb-8">
+          <h1 className="text-2xl font-black text-[#202124] tracking-tight">System Status</h1>
+          <p className="text-[12px] text-[#5f6368] font-medium opacity-80 italic italic">Real-time infrastructure health monitoring</p>
         </header>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-14">
-          <div className="bg-white p-8 rounded-[36px] shadow-[0_12px_40px_rgba(0,0,0,0.03)] border border-[#f1f3f4] transition-all hover:shadow-[0_20px_60px_rgba(0,0,0,0.06)] group">
-            <div className="flex justify-between items-center mb-6">
-              <span className="text-[11px] font-black uppercase tracking-[0.15em] text-[#5f6368]"><u>CPU Usage</u></span>
-              <Activity className="text-[#1a73e8] w-5 h-5 group-hover:scale-110 transition-transform" />
+        {/* Stats Grid - Smaller Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-8">
+          <div className="bg-white p-6 rounded-[24px] shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-[#f1f3f4] transition-all hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] group">
+            <div className="flex justify-between items-center mb-4">
+              <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[#5f6368]"><u>CPU Load</u></span>
+              <Activity className="text-[#1a73e8] w-4 h-4" />
             </div>
-            <div className="text-5xl font-black text-[#202124] tracking-tighter">{stats.cpu}%</div>
-            <div className="text-[12px] text-[#5f6368] mt-5 leading-relaxed font-medium">
-               <i>Real-time system load across all cores</i>
+            <div className="text-3xl font-black text-[#202124] tracking-tighter">{stats.cpu}%</div>
+            <div className="text-[10px] text-[#5f6368] mt-2 font-medium italic opacity-60">Avg. load across cores</div>
+          </div>
+
+          <div className="bg-white p-6 rounded-[24px] shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-[#f1f3f4] transition-all">
+            <div className="flex justify-between items-center mb-4">
+              <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[#5f6368]"><u>RAM Memory</u></span>
+              <Database className="text-[#1a73e8] w-4 h-4" />
+            </div>
+            <div className="text-3xl font-black text-[#202124] tracking-tighter">{stats.ram}%</div>
+            <div className="text-[10px] text-[#5f6368] mt-2 leading-tight">
+               <b>Used:</b> <i>{stats.activeMem}MB</i> / <b>P:</b> {stats.totalMem}GB
             </div>
           </div>
 
-          <div className="bg-white p-8 rounded-[36px] shadow-[0_12px_40px_rgba(0,0,0,0.03)] border border-[#f1f3f4] transition-all hover:shadow-[0_20px_60px_rgba(0,0,0,0.06)] group">
-            <div className="flex justify-between items-center mb-6">
-              <span className="text-[11px] font-black uppercase tracking-[0.15em] text-[#5f6368]"><u>RAM Memory</u></span>
-              <Database className="text-[#1a73e8] w-5 h-5 group-hover:scale-110 transition-transform" />
+          <div className="bg-white p-6 rounded-[24px] shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-[#f1f3f4] transition-all text-center">
+            <div className="flex justify-between items-center mb-4">
+              <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[#5f6368]"><u>Storage</u></span>
+              <HardDrive className="text-[#1a73e8] w-4 h-4" />
             </div>
-            <div className="text-5xl font-black text-[#202124] tracking-tighter">{stats.ram}%</div>
-            <div className="text-[12px] text-[#5f6368] mt-5 leading-relaxed">
-              <b>Used:</b> <span className="font-bold underlineDecoration">{stats.activeMem} MB</span><br/>
-              <b>Total:</b> <span className="font-medium">{stats.totalMem} GB</span>
-            </div>
+            <div className="text-3xl font-black text-[#202124] tracking-tighter">{stats.disk}%</div>
+            <div className="text-[10px] text-[#5f6368] mt-2 font-bold text-[#34a853] underline">STABLE</div>
           </div>
 
-          <div className="bg-white p-8 rounded-[36px] shadow-[0_12px_40px_rgba(0,0,0,0.03)] border border-[#f1f3f4] transition-all hover:shadow-[0_20px_60px_rgba(0,0,0,0.06)] group">
-            <div className="flex justify-between items-center mb-6">
-              <span className="text-[11px] font-black uppercase tracking-[0.15em] text-[#5f6368]"><u>Disk Space</u></span>
-              <HardDrive className="text-[#1a73e8] w-5 h-5 group-hover:scale-110 transition-transform" />
+          <div className="bg-white p-6 rounded-[24px] shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-[#f1f3f4] transition-all">
+            <div className="flex justify-between items-center mb-4">
+              <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[#5f6368]"><u>System UP</u></span>
+              <RefreshCcw className="text-[#1a73e8] w-4 h-4" />
             </div>
-            <div className="text-5xl font-black text-[#202124] tracking-tighter">{stats.disk}%</div>
-            <div className="text-[12px] text-[#5f6368] mt-5 italic font-medium opacity-70">Read/Write operations normal</div>
-          </div>
-
-          <div className="bg-white p-8 rounded-[36px] shadow-[0_12px_40px_rgba(0,0,0,0.03)] border border-[#f1f3f4] transition-all hover:shadow-[0_20px_60px_rgba(0,0,0,0.06)] group">
-            <div className="flex justify-between items-center mb-6">
-              <span className="text-[11px] font-black uppercase tracking-[0.15em] text-[#5f6368]"><u>Uptime</u></span>
-              <RefreshCcw className="text-[#1a73e8] w-5 h-5 group-hover:rotate-180 transition-transform duration-700" />
-            </div>
-            <div className="text-4xl font-black text-[#202124] tracking-tighter">{Math.floor(stats.uptime/3600)}h {Math.floor((stats.uptime%3600)/60)}m</div>
-            <div className="text-[12px] text-[#5f6368] mt-5">
-              <b>Latency:</b> <span className="text-[#34a853] font-black bg-[#e6f4ea] px-3 py-1 rounded-lg border border-[#ceead6]">{ping}</span>
+            <div className="text-2xl font-black text-[#202124] tracking-tighter">{Math.floor(stats.uptime/3600)}h {Math.floor((stats.uptime%3600)/60)}m</div>
+            <div className="text-[10px] mt-2 flex items-center gap-1.5 font-bold">
+               Lat: <span className="text-[#34a853] bg-[#e6f4ea] px-1.5 py-0.5 rounded-md border border-[#ceead6]">{ping}</span>
             </div>
           </div>
         </div>
 
-        {/* Action Panel */}
-        <div className="bg-white rounded-[48px] shadow-[0_12px_50px_rgba(0,0,0,0.03)] border border-[#f1f3f4] mb-14 overflow-hidden">
-          <div className="px-12 py-10 border-b border-[#f1f3f4] bg-[#fcfdfe]">
-            <h2 className="text-2xl font-black text-[#202124] tracking-tight text-center md:text-left">Provision New App Engine</h2>
+        {/* Action Panel - Slimmer */}
+        <div className="bg-white rounded-[32px] shadow-[0_8px_40px_rgba(0,0,0,0.02)] border border-[#f1f3f4] mb-8 overflow-hidden">
+          <div className="px-8 py-5 border-b border-[#f1f3f4] bg-[#fcfdfe]">
+            <h2 className="text-lg font-black text-[#202124] tracking-tight">Provision App Engine</h2>
           </div>
-          <div className="p-12">
-            <form onSubmit={handleDeploy} className="flex flex-col md:flex-row gap-5">
+          <div className="p-8">
+            <form onSubmit={handleDeploy} className="flex flex-col md:flex-row gap-3">
               <div className="relative flex-1">
-                <Code className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-[#1a73e8]" />
+                <Code className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1a73e8]" />
                 <input 
                   type="text" 
                   value={repoUrl}
                   onChange={(e) => setRepoUrl(e.target.value)}
-                  placeholder="Insert GitHub Repository URL..."
-                  className="w-full pl-16 pr-8 py-6 bg-[#f8f9fa] border-2 border-transparent focus:border-[#d2e3fc] rounded-[28px] focus:ring-4 focus:ring-[#1a73e8]/5 transition-all outline-none text-[#202124] font-bold placeholder:font-medium placeholder:italic"
+                  placeholder="https://github.com/username/repo..."
+                  className="w-full pl-12 pr-6 py-4 bg-[#f8f9fa] border-2 border-transparent focus:border-[#d2e3fc] rounded-[18px] focus:ring-0 transition-all outline-none text-sm font-bold placeholder:font-normal"
                 />
               </div>
               <button 
                 disabled={deploying}
-                className="bg-[#1a73e8] text-white px-14 py-6 rounded-[28px] font-black text-lg hover:bg-[#1557b0] transition-all shadow-2xl shadow-[#1a73e8]/30 disabled:opacity-50 flex items-center justify-center gap-3 active:scale-95"
+                className="bg-[#1a73e8] text-white px-10 py-4 rounded-[18px] font-black text-sm hover:bg-[#1557b0] transition-all active:scale-95 shadow-lg shadow-[#1a73e8]/20"
               >
-                {deploying ? 'PROVISIONING...' : 'DEPLOY INSTANCE'}
-                {!deploying && <Plus className="w-6 h-6" />}
+                {deploying ? 'PROVISIONING...' : 'DEPLOY ENGINE'}
               </button>
             </form>
-            <p className="text-[13px] text-[#5f6368] mt-8 ml-4 italic font-medium opacity-80">
-              * System automatically initializes Node.js, Python, or Go environments and handles service isolation.
-            </p>
           </div>
         </div>
 
-        {/* Instances Table */}
-        <div className="bg-white rounded-[48px] shadow-[0_12px_50px_rgba(0,0,0,0.03)] border border-[#f1f3f4] overflow-hidden">
-          <div className="px-12 py-10 border-b border-[#f1f3f4] flex justify-between items-center bg-[#fcfdfe]">
-            <h2 className="text-2xl font-black text-[#202124] tracking-tight">Active Workloads</h2>
-            <div className="flex items-center gap-2 bg-[#e8f0fe] text-[#1a73e8] px-5 py-2 rounded-full font-black text-[11px] uppercase tracking-widest border border-[#d2e3fc]">
-              <span className="w-2 h-2 bg-[#1a73e8] rounded-full animate-pulse"></span>
-              {projects.length} Online
+        {/* Instances Table - Dense */}
+        <div className="bg-white rounded-[32px] shadow-[0_8px_40px_rgba(0,0,0,0.02)] border border-[#f1f3f4] overflow-hidden">
+          <div className="px-8 py-5 border-b border-[#f1f3f4] flex justify-between items-center bg-[#fcfdfe]">
+            <h2 className="text-lg font-black text-[#202124] tracking-tight">Active Workloads</h2>
+            <div className="text-[9px] font-black uppercase bg-[#e8f0fe] text-[#1a73e8] px-3 py-1 rounded-full border border-[#d2e3fc]">
+               {projects.length} Online
             </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
-              <thead className="bg-[#f8f9fa] border-b border-[#f1f3f4] text-[10px] font-black uppercase tracking-[0.2em] text-[#5f6368]">
+              <thead className="bg-[#f8f9fa] border-b border-[#f1f3f4] text-[9px] font-black uppercase tracking-[0.15em] text-[#5f6368]">
                 <tr>
-                  <th className="px-12 py-6">Identifier</th>
-                  <th className="px-8 py-6">Architecture</th>
-                  <th className="px-8 py-6">Process CPU</th>
-                  <th className="px-8 py-6">Memory</th>
-                  <th className="px-8 py-6">Deployment Status</th>
-                  <th className="px-12 py-6 text-right">Control</th>
+                  <th className="px-8 py-4">ID / Managed</th>
+                  <th className="px-4 py-4">Arch</th>
+                  <th className="px-4 py-4">CPU</th>
+                  <th className="px-4 py-4">RAM</th>
+                  <th className="px-4 py-4">Status</th>
+                  <th className="px-8 py-4 text-right">Controls</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#f1f3f4]">
                 {projects.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-12 py-20 text-center text-[#5f6368] italic font-medium">No active instances found. Deploy your first repository above!</td>
+                    <td colSpan={6} className="px-8 py-12 text-center text-[#5f6368] text-xs font-medium italic">Empty workloads environment.</td>
                   </tr>
                 ) : projects.map((project: any) => (
                   <tr key={project.name} className="hover:bg-[#fcfdfe] transition-colors group">
-                    <td className="px-12 py-9">
-                      <div className="font-extrabold text-[#1a73e8] group-hover:underline cursor-pointer text-base tracking-tight">{project.name}</div>
-                      <div className="text-[11px] text-[#5f6368] mt-1 font-medium opacity-60 italic">Managed by PM2 Cloud Agent</div>
+                    <td className="px-8 py-4">
+                      <div className="font-extrabold text-[#1a73e8] group-hover:underline cursor-pointer text-sm">{project.name}</div>
+                      <div className="text-[9px] text-[#5f6368] font-bold italic opacity-50">PM2 CLOUD AGENT</div>
                     </td>
-                    <td className="px-8 py-9">
-                      <span className="bg-[#f1f3f4] px-4 py-1.5 rounded-full font-black text-[10px] text-[#5f6368] uppercase tracking-wider border border-[#dadce0]">LXC / Custom</span>
+                    <td className="px-4 py-4">
+                      <span className="bg-[#f1f3f4] px-2 py-1 rounded-lg text-[9px] font-black text-[#5f6368] border border-[#dadce0]">LXC</span>
                     </td>
-                    <td className="px-8 py-9 font-mono font-bold text-sm text-[#202124]">{project.cpu}%</td>
-                    <td className="px-8 py-9 font-bold text-sm text-[#202124]">{project.memory}</td>
-                    <td className="px-8 py-9">
-                      <span className="flex items-center gap-2.5 text-sm font-black text-[#34a853]">
-                        <div className="w-2.5 h-2.5 bg-[#34a853] rounded-full shadow-[0_0_8px_rgba(52,168,83,0.4)]"></div>
-                        <u>ONLINE</u>
+                    <td className="px-4 py-4 font-mono font-bold text-xs">{project.cpu}%</td>
+                    <td className="px-4 py-4 font-bold text-xs">{project.memory}</td>
+                    <td className="px-4 py-4">
+                      <span className="flex items-center gap-1.5 text-[11px] font-black text-[#34a853]">
+                        <div className="w-2 h-2 bg-[#34a853] rounded-full"></div>
+                        <u>ACTIVE</u>
                       </span>
                     </td>
-                    <td className="px-12 py-9 text-right">
-                      <div className="flex justify-end gap-3">
-                        <button title="Restart" className="p-4 hover:bg-[#e8f0fe] rounded-[24px] text-[#5f6368] hover:text-[#1a73e8] transition-all"><RefreshCcw className="w-5 h-5" /></button>
-                        <button title="Stop" className="p-4 hover:bg-[#f1f3f4] rounded-[24px] text-[#5f6368] transition-all"><Square className="w-5 h-5 fill-current" /></button>
-                        <button title="Terminal" className="p-4 hover:bg-[#f1f3f4] rounded-[24px] text-[#1a73e8] transition-all"><TerminalIcon className="w-5 h-5" /></button>
-                        <button title="Destroy" className="p-4 hover:bg-[#fce8e6] rounded-[24px] text-[#d93025] transition-all active:scale-90"><Trash2 className="w-5 h-5" /></button>
+                    <td className="px-8 py-4 text-right">
+                      <div className="flex justify-end gap-1">
+                        <button title="Restart" className="p-2.5 hover:bg-[#e8f0fe] rounded-[12px] text-[#5f6368] hover:text-[#1a73e8] transition-all"><RefreshCcw className="w-4 h-4" /></button>
+                        <button title="Stop" className="p-2.5 hover:bg-[#f1f3f4] rounded-[12px] text-[#5f6368] transition-all"><Square className="w-4 h-4 fill-current" /></button>
+                        <button title="Destroy" className="p-2.5 hover:bg-[#fce8e6] rounded-[12px] text-[#d93025] transition-all"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </td>
                   </tr>
@@ -279,8 +270,8 @@ function App() {
         </div>
       </main>
 
-      <footer className="fixed bottom-0 right-10 p-4">
-         <p className="text-[10px] font-bold text-[#dadce0] uppercase tracking-widest">Powered by AquosOS Node Engine</p>
+      <footer className="fixed bottom-0 right-8 p-3 opacity-30 select-none">
+         <p className="text-[8px] font-black text-[#80868b] uppercase tracking-[0.2em] italic">AquosNode Engine</p>
       </footer>
     </div>
   );
