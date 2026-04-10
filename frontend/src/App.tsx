@@ -16,10 +16,10 @@ function App() {
   // Fetch data
   const fetchData = async () => {
     try {
-      const pRes = await axios.get(`${API_URL}/projects`);
+      const pRes = await axios.get(`${API_URL}/projects?t=${Date.now()}`);
       setProjects(pRes.data.projects);
       
-      const sRes = await axios.get(`${API_URL}/stats`);
+      const sRes = await axios.get(`${API_URL}/stats?t=${Date.now()}`);
       setStats(sRes.data);
     } catch (e) {
       console.error(e);
@@ -28,7 +28,7 @@ function App() {
 
   useEffect(() => {
     fetchData();
-    const intv = setInterval(fetchData, 5000);
+    const intv = setInterval(fetchData, 2000);
     return () => clearInterval(intv);
   }, []);
 

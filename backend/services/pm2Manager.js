@@ -3,7 +3,10 @@ const fs = require('fs');
 const path = require('path');
 const util = require('util');
 const { exec } = require('child_process');
-const execPromise = util.promisify(exec);
+const execPromise = util.promisify((cmd, opts = {}, cb) => {
+    if (typeof opts === 'function') { cb = opts; opts = {}; }
+    return exec(cmd, { maxBuffer: 1024 * 1024 * 10, ...opts }, cb);
+});
 
 // Local DB to track ports and project metadata
 const dbPath = path.join(__dirname, '..', 'data', 'projects.json');
@@ -141,6 +144,18 @@ function executeAction(name, action) {
             return reject(new Error('Invalid action'));
         }
         pm2[action](name, (err) => {
+            if (action === 'delete') {
+                try {
+                    const db = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+                    if (db[name]) {
+                        delete db[name];
+                        fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
+                    }
+                    if (err && err.message && err.message.includes('process name not found')) {
+                        return resolve(true); // Ignore if already deleted
+                    }
+                } catch(e) {}
+            }
             if (err) return reject(err);
             
             if (action === 'delete') {
