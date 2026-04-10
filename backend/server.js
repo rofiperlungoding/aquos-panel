@@ -76,7 +76,7 @@ const REPO_ROOT = path.join(__dirname, '..'); // ~/aquos-panel (one level above 
 
 app.get('/api/system/check-update', async (req, res) => {
     try {
-        await execPromise('git fetch origin master', { cwd: REPO_ROOT });
+        await execPromise('git fetch --all', { cwd: REPO_ROOT });
         const { stdout: local } = await execPromise('git rev-parse HEAD', { cwd: REPO_ROOT });
         const { stdout: remote } = await execPromise('git rev-parse origin/master', { cwd: REPO_ROOT });
         res.json({ 
