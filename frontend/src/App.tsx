@@ -10,7 +10,6 @@ import {
   Trash2, 
   Terminal as TerminalIcon,
   Settings as SettingsIcon,
-  Plus,
   Square
 } from 'lucide-react';
 import 'xterm/css/xterm.css';
