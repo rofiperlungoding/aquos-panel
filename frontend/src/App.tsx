@@ -102,7 +102,7 @@ function App() {
           </span>
         </div>
         <nav className="flex-1 py-4">
-          <a href="#" className="flex items-center px-6 py-3 bg-[#ede9fe] text-[#6d28d9] font-medium border-l-4 border-[#6d28d9]">
+          <a href="#" className="flex items-center px-6 py-3 bg-[#e8f0fe] text-[#1967d2] font-medium border-l-4 border-[#1a73e8]">
             <LayoutDashboard className="w-5 h-5 mr-3" /> Universal Compute
           </a>
           <a href="#" className="flex items-center px-6 py-3 text-[#5f6368] hover:bg-[#f1f3f4] font-medium border-l-4 border-transparent">
