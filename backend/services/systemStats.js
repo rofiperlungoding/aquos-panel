@@ -22,22 +22,15 @@ function getCpuUsage() {
     
     previousCpus = currentCpus;
     if (totalDiff === 0) return 0;
-    return 1 - (idleDiff / totalDiff);
+    return (1 - (idleDiff / totalDiff)) * 100;
 }
 
 async function getStats() {
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
     const usedMem = totalMem - freeMem;
-
-    // CPU load average
-    const cpus = os.cpus();
-    const loadAvg = os.loadavg(); 
-
-    // Uptime
     const uptime = os.uptime();
 
-    // Try to get Disk space (Unix/Linux/Termux)
     let diskStats = { total: 0, used: 0, percentage: 0 };
     try {
         if (os.platform() !== 'win32') {
@@ -51,22 +44,14 @@ async function getStats() {
                 };
             }
         }
-    } catch (e) {
-        // Silently fail on windows or weird configs, fallback to 0
-    }
+    } catch (e) {}
 
     return {
-        ram: {
-            total: totalMem,
-            used: usedMem,
-            percentage: Math.round((usedMem / totalMem) * 100)
-        },
-        cpu: {
-            cores: cpus.length,
-            model: cpus[0].model,
-            usageObj: [getCpuUsage()]
-        },
-        disk: diskStats,
+        ram: Math.round((usedMem / totalMem) * 100),
+        activeMem: Math.round(usedMem / 1024 / 1024),
+        totalMem: (totalMem / 1024 / 1024 / 1024).toFixed(1),
+        cpu: getCpuUsage().toFixed(1),
+        disk: diskStats.percentage,
         uptime: uptime
     };
 }

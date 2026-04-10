@@ -1,22 +1,37 @@
-import { useEffect, useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { 
-  Server, Cpu, HardDrive, Play, Square, RefreshCw, Trash2, Code,
-  Terminal, Settings, LayoutDashboard, Copy
+  Server, 
+  Activity, 
+  Database, 
+  HardDrive, 
+  RefreshCcw, 
+  Code, 
+  Trash2, 
+  Terminal as TerminalIcon,
+  Settings as SettingsIcon,
+  Cpu,
+  Globe,
+  Plus,
+  Square,
+  Copy
 } from 'lucide-react';
+import { Terminal } from 'xterm';
+import { FitAddon } from 'xterm-addon-fit';
+import 'xterm/css/xterm.css';
 
 const API_URL = '/api';
+const WS_URL = `ws://${window.location.host}`;
 
 function App() {
-  const [stats, setStats] = useState<any>(null);
-  const [projects, setProjects] = useState<any[]>([]);
+  const [projects, setProjects] = useState([]);
+  const [stats, setStats] = useState<any>({ cpu: '0.0', ram: 0, disk: 0, uptime: 0, activeMem: 0, totalMem: 0 });
   const [repoUrl, setRepoUrl] = useState('');
   const [deploying, setDeploying] = useState(false);
-  const [ping, setPing] = useState<string>('--');
+  const [ping, setPing] = useState('...');
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [updating, setUpdating] = useState(false);
 
-  // Fetch data
   const fetchData = async () => {
     try {
       const start = performance.now();
@@ -43,7 +58,7 @@ function App() {
     fetchData();
     checkUpdate();
     const intv = setInterval(fetchData, 2000);
-    const updateIntv = setInterval(checkUpdate, 30000); // Check updates every 30s
+    const updateIntv = setInterval(checkUpdate, 5000); 
     return () => {
       clearInterval(intv);
       clearInterval(updateIntv);
@@ -54,7 +69,6 @@ function App() {
     setUpdating(true);
     try {
       await axios.post(`${API_URL}/system/update`);
-      // Wait a few seconds for the backend to reload, then hard refresh
       setTimeout(() => {
         window.location.reload();
       }, 5000);
@@ -73,236 +87,207 @@ function App() {
       setRepoUrl('');
       fetchData();
     } catch (e) {
-      alert("Deploy failed!");
+      alert("Deployment failed");
     } finally {
       setDeploying(false);
     }
   };
 
-  const executeAction = async (name: string, action: string) => {
-    try {
-      await axios.post(`${API_URL}/projects/${name}/action`, { action });
-      fetchData();
-    } catch (e) {
-      alert(`Action ${action} failed`);
-    }
-  };
-
-  const instanceTotalRamMB = projects.reduce((acc, p) => acc + (p.memory || 0), 0) / 1024 / 1024;
-  const instanceTotalCpu = projects.reduce((acc, p) => acc + (p.cpu || 0), 0);
-
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f8f9fa] text-[#202124] font-['Roboto']">
-      
-      {/* Sidebar - GCP Style */}
-      <aside className="w-64 bg-white border-r border-[#dadce0] flex flex-col">
-        <div className="h-16 flex items-center px-6 border-b border-[#dadce0]">
+    <div className="flex h-screen bg-[#f8f9fa] text-[#202124] font-['Plus_Jakarta_Sans']">
+      {/* Sidebar */}
+      <aside className="w-72 bg-white border-r border-[#dadce0] flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
+        <div className="h-20 flex items-center px-8 border-b border-[#f1f3f4]">
           <div className="flex flex-col">
-            <span className="text-[#1a73e8] font-bold text-lg flex items-center gap-2">
-              <Server className="w-6 h-6" /> Aquos Cloud
+            <span className="text-[#1a73e8] font-extrabold text-xl flex items-center gap-2 tracking-tight">
+              <Server className="w-7 h-7" /> Aquos Cloud
             </span>
-            <span className="text-[10px] text-[#5f6368] font-bold tracking-widest uppercase mt-0.5 opacity-70">
-              Enterprise v1.1.5
+            <span className="text-[10px] text-[#5f6368] font-bold tracking-[0.1em] uppercase mt-1 opacity-60">
+              Enterprise v1.1.6
             </span>
           </div>
         </div>
-        <nav className="flex-1 py-4">
-          <a href="#" className="flex items-center px-6 py-3 bg-[#e8f0fe] text-[#1967d2] font-medium border-l-4 border-[#1a73e8]">
-            <LayoutDashboard className="w-5 h-5 mr-3" /> Universal Compute
-          </a>
-          <a href="#" className="flex items-center px-6 py-3 text-[#5f6368] hover:bg-[#f1f3f4] font-medium border-l-4 border-transparent">
-            <Terminal className="w-5 h-5 mr-3" /> Cloud Shell
-          </a>
-          <a href="#" className="flex items-center px-6 py-3 text-[#5f6368] hover:bg-[#f1f3f4] font-medium border-l-4 border-transparent">
-            <Settings className="w-5 h-5 mr-3" /> Settings
-          </a>
+
+        <nav className="flex-1 p-6 space-y-2">
+          {updateAvailable && (
+             <button 
+               onClick={triggerUpdate}
+               disabled={updating}
+               className="w-full mb-6 bg-[#fce8e6] text-[#d93025] p-5 rounded-[20px] text-sm font-bold flex items-center gap-3 border border-[#f9ab00]/20 animate-pulse transition-all hover:scale-[1.02]"
+             >
+               <RefreshCcw className={`w-5 h-5 ${updating ? 'animate-spin' : ''}`} />
+               {updating ? 'APPLYING UPDATE...' : 'CLICK TO UPDATE NOW'}
+             </button>
+          )}
+
+          <div className="bg-[#e8f0fe] text-[#1a73e8] p-4 rounded-[22px] flex items-center gap-4 font-bold text-sm shadow-sm border border-[#d2e3fc]">
+            <Activity className="w-5 h-5" /> Universal Compute
+          </div>
+          <div className="text-[#5f6368] p-4 rounded-[22px] flex items-center gap-4 font-semibold text-sm hover:bg-[#f1f3f4] cursor-not-allowed transition-all">
+            <TerminalIcon className="w-5 h-5" /> Cloud Shell
+          </div>
+          <div className="text-[#5f6368] p-4 rounded-[22px] flex items-center gap-4 font-semibold text-sm hover:bg-[#f1f3f4] cursor-not-allowed transition-all">
+            <SettingsIcon className="w-5 h-5" /> Settings
+          </div>
         </nav>
 
-        {/* Sidebar Footer Updater */}
-        {updateAvailable && (
-          <div className="p-4 border-t border-[#dadce0] bg-blue-50/50">
-            <div className="flex items-center gap-2 text-[10px] text-blue-700 font-bold uppercase tracking-widest mb-2 px-1">
-              <RefreshCw className={`w-3 h-3 ${updating ? 'animate-spin' : ''}`} />
-              System Update UI
+        <div className="p-8 border-t border-[#f1f3f4]">
+          <div className="bg-[#f8f9fa] p-5 rounded-[24px] border border-[#f1f3f4]">
+            <div className="text-[10px] font-black text-[#5f6368] uppercase tracking-widest mb-2 opacity-60">Region Status</div>
+            <div className="flex items-center gap-2 text-sm font-bold text-[#34a853]">
+              <div className="w-2.5 h-2.5 bg-[#34a853] rounded-full animate-pulse"></div>
+              Jakarta-JP4-A
             </div>
-            <button 
-              onClick={triggerUpdate}
-              disabled={updating}
-              className="w-full bg-[#1a73e8] text-white py-2 px-3 rounded text-[11px] font-bold hover:bg-[#1765cc] transition shadow-sm disabled:opacity-70 flex items-center justify-center gap-2"
-            >
-              {updating ? 'Processing...' : 'Seamless Reload'}
-            </button>
           </div>
-        )}
+        </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto flex flex-col">
-
-        {/* Header */}
-        <header className="h-16 bg-white border-b border-[#dadce0] flex items-center px-8 shadow-sm shrink-0 z-10">
-          <h1 className="text-xl text-[#202124] font-medium">Dashboard</h1>
+      <main className="flex-1 overflow-y-auto p-12 bg-[#f8f9fa]">
+        <header className="mb-14">
+          <h1 className="text-4xl font-extrabold text-[#202124] tracking-tight">System Status</h1>
+          <p className="text-[#5f6368] mt-2 font-medium italic opacity-80">Infrastructure health monitoring & active workloads</p>
         </header>
 
-        <div className="p-8 max-w-7xl mx-auto w-full">
-          
-          {/* Top Panel: System Status (GCP dense cards) */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <div className="bg-white p-4 border border-[#dadce0] rounded shadow-sm hover:shadow-md transition">
-              <div className="flex justify-between items-start">
-                <span className="text-[#5f6368] text-sm font-medium uppercase tracking-wider">CPU</span>
-                <Cpu className="w-5 h-5 text-[#1a73e8]" />
-              </div>
-              <div className="mt-2 text-2xl font-normal">
-                {stats ? `${Math.round(stats.cpu?.usageObj[0]*100)}%` : '--'}
-              </div>
-              <div className="text-xs text-[#5f6368] mt-1 space-y-0.5">
-                <div>Instances Total: <span className="font-medium text-[#202124]">{instanceTotalCpu.toFixed(1)}%</span></div>
-                <div>HP System: <span className="font-medium text-[#202124]">{stats ? Math.max(0, Math.round(stats.cpu?.usageObj[0]*100) - instanceTotalCpu).toFixed(1) : '--'}%</span></div>
-              </div>
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-14">
+          <div className="bg-white p-8 rounded-[36px] shadow-[0_12px_40px_rgba(0,0,0,0.03)] border border-[#f1f3f4] transition-all hover:shadow-[0_20px_60px_rgba(0,0,0,0.06)] group">
+            <div className="flex justify-between items-center mb-6">
+              <span className="text-[11px] font-black uppercase tracking-[0.15em] text-[#5f6368]"><u>CPU Usage</u></span>
+              <Activity className="text-[#1a73e8] w-5 h-5 group-hover:scale-110 transition-transform" />
             </div>
-            <div className="bg-white p-4 border border-[#dadce0] rounded shadow-sm hover:shadow-md transition">
-              <div className="flex justify-between items-start">
-                <span className="text-[#5f6368] text-sm font-medium uppercase tracking-wider">Memory</span>
-                <Server className="w-5 h-5 text-[#1a73e8]" />
-              </div>
-              <div className="mt-2 text-2xl font-normal">
-                {stats ? `${stats.ram?.percentage}%` : '--'}
-              </div>
-              <div className="text-xs text-[#5f6368] mt-1 space-y-0.5">
-                <div>Instances: <span className="font-medium text-[#202124]">{instanceTotalRamMB.toFixed(1)} MB</span></div>
-                <div>HP System: <span className="font-medium text-[#202124]">{stats ? ((stats.ram?.used / 1024 / 1024) - instanceTotalRamMB).toFixed(1) : '--'} MB</span></div>
-                <div>Physical Total: <span className="font-medium text-[#202124]">{stats ? (stats.ram?.total / 1024 / 1024 / 1024).toFixed(1) + ' GB' : ''}</span></div>
-              </div>
-            </div>
-             <div className="bg-white p-4 border border-[#dadce0] rounded shadow-sm hover:shadow-md transition">
-              <div className="flex justify-between items-start">
-                <span className="text-[#5f6368] text-sm font-medium uppercase tracking-wider">Storage</span>
-                <HardDrive className="w-5 h-5 text-[#1a73e8]" />
-              </div>
-              <div className="mt-2 text-2xl font-normal">
-                {stats?.disk ? `${stats.disk.percentage}%` : '--'}
-              </div>
-            </div>
-             <div className="bg-white p-4 border border-[#dadce0] rounded shadow-sm hover:shadow-md transition">
-              <div className="flex justify-between items-start">
-                <span className="text-[#5f6368] text-sm font-medium uppercase tracking-wider">Sys Uptime & Net</span>
-                <RefreshCw className="w-5 h-5 text-[#1a73e8]" />
-              </div>
-              <div className="mt-2 text-2xl font-normal">
-                {stats ? `${Math.floor(stats.uptime / 3600)}h ${Math.floor((stats.uptime % 3600) / 60)}m` : '--'}
-              </div>
-              <div className="text-xs text-[#5f6368] mt-1">
-                Ping Latency: <span className="font-medium text-[#202124]">{ping}</span>
-              </div>
+            <div className="text-5xl font-black text-[#202124] tracking-tighter">{stats.cpu}%</div>
+            <div className="text-[12px] text-[#5f6368] mt-5 leading-relaxed font-medium">
+               <i>Real-time system load across all cores</i>
             </div>
           </div>
 
-          {/* Create Instance Card */}
-          <div className="bg-white border border-[#dadce0] rounded shadow-sm mb-8 overflow-hidden">
-            <div className="bg-[#f8f9fa] border-b border-[#dadce0] px-6 py-3">
-              <h2 className="text-[#202124] font-medium">Create New App Engine Instance</h2>
+          <div className="bg-white p-8 rounded-[36px] shadow-[0_12px_40px_rgba(0,0,0,0.03)] border border-[#f1f3f4] transition-all hover:shadow-[0_20px_60px_rgba(0,0,0,0.06)] group">
+            <div className="flex justify-between items-center mb-6">
+              <span className="text-[11px] font-black uppercase tracking-[0.15em] text-[#5f6368]"><u>RAM Memory</u></span>
+              <Database className="text-[#1a73e8] w-5 h-5 group-hover:scale-110 transition-transform" />
             </div>
-            <div className="p-6">
-              <form onSubmit={handleDeploy} className="flex gap-4">
-                <div className="relative flex-1">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Code className="h-5 w-5 text-[#5f6368]" />
-                  </div>
-                  <input 
-                    type="text" 
-                    value={repoUrl}
-                    onChange={(e) => setRepoUrl(e.target.value)}
-                    className="pl-10 w-full outline-none border border-[#dadce0] rounded px-4 py-2 text-sm focus:border-[#1a73e8] focus:ring-1 focus:ring-[#1a73e8] transition"
-                    placeholder="https://github.com/username/repository.git"
-                    required
-                  />
-                </div>
-                <button 
-                  type="submit" 
-                  disabled={deploying}
-                  className="bg-[#1a73e8] hover:bg-[#1557b0] text-white px-6 py-2 rounded font-medium text-sm transition shadow-sm disabled:opacity-50"
-                >
-                  {deploying ? 'PROVISIONING...' : 'DEPLOY'}
-                </button>
-              </form>
-              <p className="text-xs text-[#5f6368] mt-3">
-                Auto-detects Node.js, Python, or Go environments and provisions instantly.
-              </p>
+            <div className="text-5xl font-black text-[#202124] tracking-tighter">{stats.ram}%</div>
+            <div className="text-[12px] text-[#5f6368] mt-5 leading-relaxed">
+              <b>Used:</b> <span className="font-bold underlineDecoration">{stats.activeMem} MB</span><br/>
+              <b>Total:</b> <span className="font-medium">{stats.totalMem} GB</span>
             </div>
           </div>
 
-          {/* Instances Table */}
-          <div className="bg-white border border-[#dadce0] rounded shadow-sm overflow-hidden">
-            <div className="flex justify-between items-center bg-[#f8f9fa] border-b border-[#dadce0] px-6 py-3">
-              <h2 className="text-[#202124] font-medium">Running Instances</h2>
+          <div className="bg-white p-8 rounded-[36px] shadow-[0_12px_40px_rgba(0,0,0,0.03)] border border-[#f1f3f4] transition-all hover:shadow-[0_20px_60px_rgba(0,0,0,0.06)] group">
+            <div className="flex justify-between items-center mb-6">
+              <span className="text-[11px] font-black uppercase tracking-[0.15em] text-[#5f6368]"><u>Disk Space</u></span>
+              <HardDrive className="text-[#1a73e8] w-5 h-5 group-hover:scale-110 transition-transform" />
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-white border-b border-[#dadce0] text-[#5f6368]">
+            <div className="text-5xl font-black text-[#202124] tracking-tighter">{stats.disk}%</div>
+            <div className="text-[12px] text-[#5f6368] mt-5 italic font-medium opacity-70">Read/Write operations normal</div>
+          </div>
+
+          <div className="bg-white p-8 rounded-[36px] shadow-[0_12px_40px_rgba(0,0,0,0.03)] border border-[#f1f3f4] transition-all hover:shadow-[0_20px_60px_rgba(0,0,0,0.06)] group">
+            <div className="flex justify-between items-center mb-6">
+              <span className="text-[11px] font-black uppercase tracking-[0.15em] text-[#5f6368]"><u>Uptime</u></span>
+              <RefreshCcw className="text-[#1a73e8] w-5 h-5 group-hover:rotate-180 transition-transform duration-700" />
+            </div>
+            <div className="text-4xl font-black text-[#202124] tracking-tighter">{Math.floor(stats.uptime/3600)}h {Math.floor((stats.uptime%3600)/60)}m</div>
+            <div className="text-[12px] text-[#5f6368] mt-5">
+              <b>Latency:</b> <span className="text-[#34a853] font-black bg-[#e6f4ea] px-2 py-0.5 rounded-md">{ping}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Panel */}
+        <div className="bg-white rounded-[48px] shadow-[0_12px_50px_rgba(0,0,0,0.03)] border border-[#f1f3f4] mb-14 overflow-hidden">
+          <div className="px-12 py-10 border-b border-[#f1f3f4] bg-[#fcfdfe]">
+            <h2 className="text-2xl font-black text-[#202124] tracking-tight text-center md:text-left">Provision New App Engine</h2>
+          </div>
+          <div className="p-12">
+            <form onSubmit={handleDeploy} className="flex flex-col md:flex-row gap-5">
+              <div className="relative flex-1">
+                <Code className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-[#1a73e8]" />
+                <input 
+                  type="text" 
+                  value={repoUrl}
+                  onChange={(e) => setRepoUrl(e.target.value)}
+                  placeholder="Insert GitHub Repository URL..."
+                  className="w-full pl-16 pr-8 py-6 bg-[#f8f9fa] border-2 border-transparent focus:border-[#d2e3fc] rounded-[28px] focus:ring-4 focus:ring-[#1a73e8]/5 transition-all outline-none text-[#202124] font-bold placeholder:font-medium placeholder:italic"
+                />
+              </div>
+              <button 
+                disabled={deploying}
+                className="bg-[#1a73e8] text-white px-14 py-6 rounded-[28px] font-black text-lg hover:bg-[#1557b0] transition-all shadow-2xl shadow-[#1a73e8]/30 disabled:opacity-50 flex items-center justify-center gap-3 active:scale-95"
+              >
+                {deploying ? 'PROVISIONING...' : 'DEPLOY INSTANCE'}
+                {!deploying && <Plus className="w-6 h-6" />}
+              </button>
+            </form>
+            <p className="text-[13px] text-[#5f6368] mt-8 ml-4 italic font-medium opacity-80">
+              * System automatically initializes Node.js, Python, or Go environments and handles service isolation.
+            </p>
+          </div>
+        </div>
+
+        {/* Instances Table */}
+        <div className="bg-white rounded-[48px] shadow-[0_12px_50px_rgba(0,0,0,0.03)] border border-[#f1f3f4] overflow-hidden">
+          <div className="px-12 py-10 border-b border-[#f1f3f4] flex justify-between items-center bg-[#fcfdfe]">
+            <h2 className="text-2xl font-black text-[#202124] tracking-tight">Active Workloads</h2>
+            <div className="flex items-center gap-2 bg-[#e8f0fe] text-[#1a73e8] px-5 py-2 rounded-full font-black text-[11px] uppercase tracking-widest border border-[#d2e3fc]">
+              <span className="w-2 h-2 bg-[#1a73e8] rounded-full animate-pulse"></span>
+              {projects.length} Online
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-[#f8f9fa] border-b border-[#f1f3f4] text-[10px] font-black uppercase tracking-[0.2em] text-[#5f6368]">
+                <tr>
+                  <th className="px-12 py-6">Identifier</th>
+                  <th className="px-8 py-6">Architecture</th>
+                  <th className="px-8 py-6">Process CPU</th>
+                  <th className="px-8 py-6">Memory</th>
+                  <th className="px-8 py-6">Deployment Status</th>
+                  <th className="px-12 py-6 text-right">Control</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#f1f3f4]">
+                {projects.length === 0 ? (
                   <tr>
-                    <th className="px-6 py-3 font-medium uppercase text-xs tracking-wider">Instance Name</th>
-                    <th className="px-6 py-3 font-medium uppercase text-xs tracking-wider">Engine</th>
-                    <th className="px-6 py-3 font-medium uppercase text-xs tracking-wider">CPU</th>
-                    <th className="px-6 py-3 font-medium uppercase text-xs tracking-wider">RAM</th>
-                    <th className="px-6 py-3 font-medium uppercase text-xs tracking-wider">Status</th>
-                    <th className="px-6 py-3 font-medium uppercase text-xs tracking-wider">Port / Network</th>
-                    <th className="px-6 py-3 font-medium uppercase text-xs tracking-wider text-right">Actions</th>
+                    <td colSpan={6} className="px-12 py-20 text-center text-[#5f6368] italic font-medium">No active instances found. Deploy your first repository above!</td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-[#dadce0]">
-                  {projects.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-[#5f6368]">
-                        No active instances. Deploy a repository to get started.
-                      </td>
-                    </tr>
-                  ) : projects.map((p, idx) => (
-                    <tr key={idx} className="hover:bg-[#f1f3f4] transition">
-                      <td className="px-6 py-4 font-medium text-[#1a73e8]">{p.name}</td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800`}>
-                          {p.stack || 'Custom'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 font-normal text-[#5f6368]">
-                        {(p.cpu || 0).toFixed(1)}%
-                      </td>
-                      <td className="px-6 py-4 font-normal text-[#5f6368]">
-                        {((p.memory || 0) / 1024 / 1024).toFixed(1)} MB
-                      </td>
-                      <td className="px-6 py-4 flex items-center gap-2">
-                        <div className={`w-2.5 h-2.5 rounded-full ${p.status === 'online' ? 'bg-[#0f9d58]' : 'bg-[#db4437]'}`}></div>
-                        <span className="capitalize">{p.status}</span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-1 cursor-pointer hover:bg-gray-200 p-1 rounded w-max" title="Copy to clipboard">
-                          <span>{p.port ? `:${p.port}` : '--'}</span>
-                          <Copy className="w-3 h-3 text-[#5f6368]" />
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button onClick={() => executeAction(p.name, p.status === 'online' ? 'restart' : 'start')} className="p-1.5 text-[#1a73e8] hover:bg-[#e8f0fe] rounded transition" title={p.status === 'online' ? 'Restart' : 'Start'}>
-                            {p.status === 'online' ? <RefreshCw className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                          </button>
-                          <button onClick={() => executeAction(p.name, 'stop')} className="p-1.5 text-[#5f6368] hover:bg-[#f1f3f4] rounded transition" title="Stop">
-                            <Square className="w-4 h-4 fill-current opacity-70" />
-                          </button>
-                          <button onClick={() => executeAction(p.name, 'delete')} className="p-1.5 text-[#db4437] hover:bg-red-50 rounded transition" title="Delete Instance">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ) : projects.map((project: any) => (
+                  <tr key={project.name} className="hover:bg-[#fcfdfe] transition-colors group">
+                    <td className="px-12 py-9">
+                      <div className="font-extrabold text-[#1a73e8] group-hover:underline cursor-pointer text-base tracking-tight">{project.name}</div>
+                      <div className="text-[11px] text-[#5f6368] mt-1 font-medium opacity-60 italic">Managed by PM2 Cloud Agent</div>
+                    </td>
+                    <td className="px-8 py-9">
+                      <span className="bg-[#f1f3f4] px-4 py-1.5 rounded-full font-black text-[10px] text-[#5f6368] uppercase tracking-wider border border-[#dadce0]">LXC / Custom</span>
+                    </td>
+                    <td className="px-8 py-9 font-mono font-bold text-sm text-[#202124]">{project.cpu}%</td>
+                    <td className="px-8 py-9 font-bold text-sm text-[#202124]">{project.memory}</td>
+                    <td className="px-8 py-9">
+                      <span className="flex items-center gap-2.5 text-sm font-black text-[#34a853]">
+                        <div className="w-2.5 h-2.5 bg-[#34a853] rounded-full shadow-[0_0_8px_rgba(52,168,83,0.4)]"></div>
+                        <u>ONLINE</u>
+                      </span>
+                    </td>
+                    <td className="px-12 py-9 text-right">
+                      <div className="flex justify-end gap-3">
+                        <button title="Restart" className="p-4 hover:bg-[#e8f0fe] rounded-[24px] text-[#5f6368] hover:text-[#1a73e8] transition-all"><RefreshCcw className="w-5 h-5" /></button>
+                        <button title="Stop" className="p-4 hover:bg-[#f1f3f4] rounded-[24px] text-[#5f6368] transition-all"><Square className="w-5 h-5 fill-current" /></button>
+                        <button title="Terminal" className="p-4 hover:bg-[#f1f3f4] rounded-[24px] text-[#1a73e8] transition-all"><TerminalIcon className="w-5 h-5" /></button>
+                        <button title="Destroy" className="p-4 hover:bg-[#fce8e6] rounded-[24px] text-[#d93025] transition-all active:scale-90"><Trash2 className="w-5 h-5" /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          
         </div>
       </main>
+
+      <footer className="fixed bottom-0 right-10 p-4">
+         <p className="text-[10px] font-bold text-[#dadce0] uppercase tracking-widest">Powered by AquosOS Node Engine</p>
+      </footer>
     </div>
   );
 }
