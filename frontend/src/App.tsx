@@ -97,9 +97,14 @@ function App() {
       {/* Sidebar - GCP Style */}
       <aside className="w-64 bg-white border-r border-[#dadce0] flex flex-col">
         <div className="h-16 flex items-center px-6 border-b border-[#dadce0]">
-          <span className="text-[#1a73e8] font-bold text-lg flex items-center gap-2">
-            <Server className="w-6 h-6" /> Aquos Cloud
-          </span>
+          <div className="flex flex-col">
+            <span className="text-[#1a73e8] font-bold text-lg flex items-center gap-2">
+              <Server className="w-6 h-6" /> Aquos Cloud
+            </span>
+            <span className="text-[10px] text-[#5f6368] font-bold tracking-widest uppercase mt-0.5 opacity-70">
+              Enterprise v1.1.0
+            </span>
+          </div>
         </div>
         <nav className="flex-1 py-4">
           <a href="#" className="flex items-center px-6 py-3 bg-[#e8f0fe] text-[#1967d2] font-medium border-l-4 border-[#1a73e8]">
