@@ -13,8 +13,7 @@ import {
   Square,
   Play,
   RotateCcw,
-  Box,
-  Cpu
+  Box
 } from 'lucide-react';
 import TerminalView from './components/TerminalView';
 
@@ -29,8 +28,6 @@ function App() {
   const [repoUrl, setRepoUrl] = useState('');
   const [deploying, setDeploying] = useState(false);
   const [ping, setPing] = useState('...');
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [updating, setUpdating] = useState(false);
 
   const fetchData = async () => {
     try {
