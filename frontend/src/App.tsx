@@ -9,7 +9,6 @@ import {
   Code, 
   Trash2, 
   Terminal as TerminalIcon,
-  Settings as SettingsIcon,
   Square,
   Play,
   RotateCcw,
@@ -19,8 +18,6 @@ import {
   Clock
 } from 'lucide-react';
 import { 
-  LineChart, 
-  Line, 
   XAxis, 
   YAxis, 
   CartesianGrid, 
