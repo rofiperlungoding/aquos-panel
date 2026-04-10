@@ -97,7 +97,7 @@ function App() {
               <Server className="w-7 h-7" /> Aquos Cloud
             </span>
             <span className="text-[10px] text-[#5f6368] font-bold tracking-[0.1em] uppercase mt-1 opacity-60">
-              Enterprise v1.1.6
+              Enterprise v1.1.7
             </span>
           </div>
         </div>
