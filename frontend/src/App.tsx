@@ -83,7 +83,6 @@ function App() {
       const sRes = await axios.get(`${API_URL}/stats?t=${Date.now()}`);
       const newStats = sRes.data;
       setStats(newStats);
-      setPing(Math.round(performance.now() - start).toString() + 'ms');
 
       setHistory(prev => {
         const newData = [...prev, {
