@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   Server, 
@@ -10,18 +10,12 @@ import {
   Trash2, 
   Terminal as TerminalIcon,
   Settings as SettingsIcon,
-  Cpu,
-  Globe,
   Plus,
-  Square,
-  Copy
+  Square
 } from 'lucide-react';
-import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
 
 const API_URL = '/api';
-const WS_URL = `ws://${window.location.host}`;
 
 function App() {
   const [projects, setProjects] = useState([]);
@@ -145,8 +139,8 @@ function App() {
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto p-12 bg-[#f8f9fa]">
         <header className="mb-14">
-          <h1 className="text-4xl font-extrabold text-[#202124] tracking-tight">System Status</h1>
-          <p className="text-[#5f6368] mt-2 font-medium italic opacity-80">Infrastructure health monitoring & active workloads</p>
+          <h1 className="text-4xl font-extrabold text-[#202124] tracking-tight text-center md:text-left">System Status</h1>
+          <p className="text-[#5f6368] mt-2 font-medium italic opacity-80 text-center md:text-left">Infrastructure health monitoring & active workloads</p>
         </header>
 
         {/* Stats Grid */}
@@ -190,7 +184,7 @@ function App() {
             </div>
             <div className="text-4xl font-black text-[#202124] tracking-tighter">{Math.floor(stats.uptime/3600)}h {Math.floor((stats.uptime%3600)/60)}m</div>
             <div className="text-[12px] text-[#5f6368] mt-5">
-              <b>Latency:</b> <span className="text-[#34a853] font-black bg-[#e6f4ea] px-2 py-0.5 rounded-md">{ping}</span>
+              <b>Latency:</b> <span className="text-[#34a853] font-black bg-[#e6f4ea] px-3 py-1 rounded-lg border border-[#ceead6]">{ping}</span>
             </div>
           </div>
         </div>
