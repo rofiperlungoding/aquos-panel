@@ -76,7 +76,6 @@ function App() {
   const fetchData = async () => {
     if (!token) return;
     try {
-      const start = performance.now();
       const pRes = await axios.get(`${API_URL}/projects?t=${Date.now()}`);
       setProjects(pRes.data.projects);
       
