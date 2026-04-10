@@ -72,12 +72,13 @@ app.post('/api/projects/:name/action', async (req, res) => {
 const util = require('util');
 const { exec } = require('child_process');
 const execPromise = util.promisify(exec);
+const REPO_ROOT = path.join(__dirname, '..'); // ~/aquos-panel (one level above /backend)
 
 app.get('/api/system/check-update', async (req, res) => {
     try {
-        await execPromise('git fetch origin master');
-        const { stdout: local } = await execPromise('git rev-parse HEAD');
-        const { stdout: remote } = await execPromise('git rev-parse origin/master');
+        await execPromise('git fetch origin master', { cwd: REPO_ROOT });
+        const { stdout: local } = await execPromise('git rev-parse HEAD', { cwd: REPO_ROOT });
+        const { stdout: remote } = await execPromise('git rev-parse origin/master', { cwd: REPO_ROOT });
         res.json({ 
             updateAvailable: local.trim() !== remote.trim(),
             local: local.trim(),
@@ -91,10 +92,13 @@ app.get('/api/system/check-update', async (req, res) => {
 app.post('/api/system/update', async (req, res) => {
     res.json({ message: 'Update initiated' });
     setTimeout(() => {
-        // Run git pull and restart aquos-panel silently
-        exec('git pull origin master && npm install && pm2 reload aquos-panel', (err) => {
-            if (err) exec('pm2 restart aquos-panel'); // Fallback
-        });
+        // Run from repo root so git pull works
+        exec('git pull origin master && cd backend && npm install && pm2 reload aquos-panel', 
+            { cwd: REPO_ROOT },
+            (err) => {
+                if (err) exec('pm2 restart aquos-panel');
+            }
+        );
     }, 1000);
 });
 
