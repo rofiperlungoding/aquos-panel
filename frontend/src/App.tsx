@@ -112,28 +112,27 @@ function App() {
             <Settings className="w-5 h-5 mr-3" /> Settings
           </a>
         </nav>
+
+        {/* Sidebar Footer Updater */}
+        {updateAvailable && (
+          <div className="p-4 border-t border-[#dadce0] bg-blue-50/50">
+            <div className="flex items-center gap-2 text-[10px] text-blue-700 font-bold uppercase tracking-widest mb-2 px-1">
+              <RefreshCw className={`w-3 h-3 ${updating ? 'animate-spin' : ''}`} />
+              System Update UI
+            </div>
+            <button 
+              onClick={triggerUpdate}
+              disabled={updating}
+              className="w-full bg-[#1a73e8] text-white py-2 px-3 rounded text-[11px] font-bold hover:bg-[#1765cc] transition shadow-sm disabled:opacity-70 flex items-center justify-center gap-2"
+            >
+              {updating ? 'Processing...' : 'Seamless Reload'}
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto flex flex-col">
-        
-        {/* Updater Banner */}
-        {updateAvailable && (
-          <div className="bg-blue-600 text-white px-8 py-3 flex justify-between items-center transition-all">
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <RefreshCw className={`w-4 h-4 ${updating ? 'animate-spin' : ''}`} />
-              {updating ? 'System is updating seamlessly without cutoff...' : 'A new Enterprise Platform Update is available!'}
-            </div>
-            {!updating && (
-              <button 
-                onClick={triggerUpdate}
-                className="bg-white text-blue-600 px-4 py-1.5 rounded text-xs font-bold uppercase tracking-wider hover:bg-blue-50 transition shadow-sm"
-              >
-                Apply & Seamless Reload
-              </button>
-            )}
-          </div>
-        )}
 
         {/* Header */}
         <header className="h-16 bg-white border-b border-[#dadce0] flex items-center px-8 shadow-sm shrink-0 z-10">
