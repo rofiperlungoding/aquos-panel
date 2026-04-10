@@ -98,11 +98,11 @@ function App() {
       <aside className="w-64 bg-white border-r border-[#dadce0] flex flex-col">
         <div className="h-16 flex items-center px-6 border-b border-[#dadce0]">
           <div className="flex flex-col">
-            <span className="text-[#1a73e8] font-bold text-lg flex items-center gap-2">
+            <span className="text-[#ff5722] font-bold text-lg flex items-center gap-2">
               <Server className="w-6 h-6" /> Aquos Cloud
             </span>
             <span className="text-[10px] text-[#5f6368] font-bold tracking-widest uppercase mt-0.5 opacity-70">
-              Enterprise v1.1.3
+              Enterprise v1.1.4
             </span>
           </div>
         </div>
