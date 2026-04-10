@@ -32,7 +32,8 @@ const TerminalView: React.FC<TerminalViewProps> = ({ wsUrl }) => {
     xtermRef.current = term;
 
     // WebSocket connection
-    const socket = new WebSocket(`${wsUrl}?type=terminal&cols=${term.cols}&rows=${term.rows}`);
+    const token = localStorage.getItem('aquos_token');
+    const socket = new WebSocket(`${wsUrl}?type=terminal&cols=${term.cols}&rows=${term.rows}&token=${token}`);
     socketRef.current = socket;
 
     socket.onopen = () => {

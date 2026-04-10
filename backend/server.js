@@ -10,9 +10,27 @@ const fs = require('fs');
 const pm2Manager = require('./services/pm2Manager');
 const systemStats = require('./services/systemStats');
 
+const jwt = require('jsonwebtoken');
+
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
+
+const PANEL_PASSWORD = process.env.PANEL_PASSWORD || 'aquos123';
+const JWT_SECRET = process.env.JWT_SECRET || 'aquos_ultra_secret_shield';
+
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) return res.status(401).json({ error: 'Authentication required' });
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) return res.status(403).json({ error: 'Invalid or expired token' });
+        req.user = user;
+        next();
+    });
+}
 
 app.use(cors());
 app.use(express.json());
@@ -28,8 +46,19 @@ if (!fs.existsSync(PROJECTS_DIR)) {
     fs.mkdirSync(PROJECTS_DIR, { recursive: true });
 }
 
-// REST APIs
-app.get('/api/stats', async (req, res) => {
+// Auth API
+app.post('/api/login', (req, res) => {
+    const { password } = req.body;
+    if (password === PANEL_PASSWORD) {
+        const token = jwt.sign({ admin: true }, JWT_SECRET, { expiresIn: '7d' });
+        res.json({ token });
+    } else {
+        res.status(401).json({ error: 'Wrong password' });
+    }
+});
+
+// Protected REST APIs
+app.get('/api/stats', authenticateToken, async (req, res) => {
     try {
         const stats = await systemStats.getStats();
         res.json(stats);
@@ -38,7 +67,7 @@ app.get('/api/stats', async (req, res) => {
     }
 });
 
-app.get('/api/projects', async (req, res) => {
+app.get('/api/projects', authenticateToken, async (req, res) => {
     try {
         const list = await pm2Manager.listProjects();
         res.json({ projects: list });
@@ -47,7 +76,7 @@ app.get('/api/projects', async (req, res) => {
     }
 });
 
-app.post('/api/projects', async (req, res) => {
+app.post('/api/projects', authenticateToken, async (req, res) => {
     const { repoUrl, branch = 'main', envVars = {} } = req.body;
     try {
         const result = await pm2Manager.deployProject(repoUrl, branch, envVars, PROJECTS_DIR);
@@ -57,7 +86,7 @@ app.post('/api/projects', async (req, res) => {
     }
 });
 
-app.post('/api/projects/:name/action', async (req, res) => {
+app.post('/api/projects/:name/action', authenticateToken, async (req, res) => {
     const { name } = req.params;
     const { action } = req.body; // start, stop, restart, delete
     try {
@@ -107,6 +136,20 @@ wss.on('connection', (ws, req) => {
     const urlParams = new URLSearchParams(req.url.split('?')[1]);
     const type = urlParams.get('type') || 'terminal';
     
+    // Auth check for WS
+    const token = urlParams.get('token');
+    if (!token) {
+        ws.close(1008, 'Auth Required');
+        return;
+    }
+
+    try {
+        jwt.verify(token, JWT_SECRET);
+    } catch(e) {
+        ws.close(1008, 'Invalid Token');
+        return;
+    }
+
     if (type === 'terminal') {
         const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
         
