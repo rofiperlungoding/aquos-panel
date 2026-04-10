@@ -12,17 +12,21 @@ function App() {
   const [projects, setProjects] = useState<any[]>([]);
   const [repoUrl, setRepoUrl] = useState('');
   const [deploying, setDeploying] = useState(false);
+  const [ping, setPing] = useState<string>('--');
 
   // Fetch data
   const fetchData = async () => {
     try {
+      const start = performance.now();
       const pRes = await axios.get(`${API_URL}/projects?t=${Date.now()}`);
       setProjects(pRes.data.projects);
       
       const sRes = await axios.get(`${API_URL}/stats?t=${Date.now()}`);
       setStats(sRes.data);
+      setPing(Math.round(performance.now() - start).toString() + 'ms');
     } catch (e) {
       console.error(e);
+      setPing('ERR');
     }
   };
 
@@ -55,6 +59,9 @@ function App() {
       alert(`Action ${action} failed`);
     }
   };
+
+  const instanceTotalRamMB = projects.reduce((acc, p) => acc + (p.memory || 0), 0) / 1024 / 1024;
+  const instanceTotalCpu = projects.reduce((acc, p) => acc + (p.cpu || 0), 0);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f8f9fa] text-[#202124] font-['Roboto']">
@@ -98,6 +105,10 @@ function App() {
               <div className="mt-2 text-2xl font-normal">
                 {stats ? `${Math.round(stats.cpu?.usageObj[0]*100)}%` : '--'}
               </div>
+              <div className="text-xs text-[#5f6368] mt-1 space-y-0.5">
+                <div>Instances Total: <span className="font-medium text-[#202124]">{instanceTotalCpu.toFixed(1)}%</span></div>
+                <div>HP System: <span className="font-medium text-[#202124]">{stats ? Math.max(0, Math.round(stats.cpu?.usageObj[0]*100) - instanceTotalCpu).toFixed(1) : '--'}%</span></div>
+              </div>
             </div>
             <div className="bg-white p-4 border border-[#dadce0] rounded shadow-sm hover:shadow-md transition">
               <div className="flex justify-between items-start">
@@ -107,8 +118,10 @@ function App() {
               <div className="mt-2 text-2xl font-normal">
                 {stats ? `${stats.ram?.percentage}%` : '--'}
               </div>
-              <div className="text-xs text-[#5f6368] mt-1">
-                {stats ? `${(stats.ram?.used / 1024 / 1024 / 1024).toFixed(1)} GB / ${(stats.ram?.total / 1024 / 1024 / 1024).toFixed(1)} GB` : ''}
+              <div className="text-xs text-[#5f6368] mt-1 space-y-0.5">
+                <div>Instances: <span className="font-medium text-[#202124]">{instanceTotalRamMB.toFixed(1)} MB</span></div>
+                <div>HP System: <span className="font-medium text-[#202124]">{stats ? ((stats.ram?.used / 1024 / 1024) - instanceTotalRamMB).toFixed(1) : '--'} MB</span></div>
+                <div>Physical Total: <span className="font-medium text-[#202124]">{stats ? (stats.ram?.total / 1024 / 1024 / 1024).toFixed(1) + ' GB' : ''}</span></div>
               </div>
             </div>
              <div className="bg-white p-4 border border-[#dadce0] rounded shadow-sm hover:shadow-md transition">
@@ -122,11 +135,14 @@ function App() {
             </div>
              <div className="bg-white p-4 border border-[#dadce0] rounded shadow-sm hover:shadow-md transition">
               <div className="flex justify-between items-start">
-                <span className="text-[#5f6368] text-sm font-medium uppercase tracking-wider">Uptime</span>
+                <span className="text-[#5f6368] text-sm font-medium uppercase tracking-wider">Sys Uptime & Net</span>
                 <RefreshCw className="w-5 h-5 text-[#1a73e8]" />
               </div>
               <div className="mt-2 text-2xl font-normal">
                 {stats ? `${Math.floor(stats.uptime / 3600)}h ${Math.floor((stats.uptime % 3600) / 60)}m` : '--'}
+              </div>
+              <div className="text-xs text-[#5f6368] mt-1">
+                Ping Latency: <span className="font-medium text-[#202124]">{ping}</span>
               </div>
             </div>
           </div>
@@ -176,6 +192,8 @@ function App() {
                   <tr>
                     <th className="px-6 py-3 font-medium uppercase text-xs tracking-wider">Instance Name</th>
                     <th className="px-6 py-3 font-medium uppercase text-xs tracking-wider">Engine</th>
+                    <th className="px-6 py-3 font-medium uppercase text-xs tracking-wider">CPU</th>
+                    <th className="px-6 py-3 font-medium uppercase text-xs tracking-wider">RAM</th>
                     <th className="px-6 py-3 font-medium uppercase text-xs tracking-wider">Status</th>
                     <th className="px-6 py-3 font-medium uppercase text-xs tracking-wider">Port / Network</th>
                     <th className="px-6 py-3 font-medium uppercase text-xs tracking-wider text-right">Actions</th>
@@ -195,6 +213,12 @@ function App() {
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800`}>
                           {p.stack || 'Custom'}
                         </span>
+                      </td>
+                      <td className="px-6 py-4 font-normal text-[#5f6368]">
+                        {(p.cpu || 0).toFixed(1)}%
+                      </td>
+                      <td className="px-6 py-4 font-normal text-[#5f6368]">
+                        {((p.memory || 0) / 1024 / 1024).toFixed(1)} MB
                       </td>
                       <td className="px-6 py-4 flex items-center gap-2">
                         <div className={`w-2.5 h-2.5 rounded-full ${p.status === 'online' ? 'bg-[#0f9d58]' : 'bg-[#db4437]'}`}></div>
