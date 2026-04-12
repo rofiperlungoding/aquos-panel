@@ -658,12 +658,19 @@ function AppContent() {
         {/* TAB: CLOUD SHELL */}
         {activeTab === 'shell' && (
           <div className="flex-1 p-8 flex flex-col bg-[#0f1115]">
-             <header className="mb-6 flex justify-between items-center text-white">
-                <h1 className="text-xl font-bold tracking-tight flex items-center gap-3">
-                  <TerminalIcon className="text-[#1a73e8]" /> End-to-End Shell
-                </h1>
+             <header className="mb-6 flex justify-between items-center text-white border-b border-white/5 pb-6">
+                <div>
+                  <h1 className="text-xl font-black tracking-tight flex items-center gap-3">
+                    <TerminalIcon className="text-[#1a73e8]" /> Live Cloud Shell
+                  </h1>
+                  <p className="text-[10px] text-[#9aa0a6] font-bold uppercase tracking-widest mt-1">Real-time Encrypted Bridge</p>
+                </div>
+                <div className="text-[9px] font-black text-[#ea4335] flex items-center gap-2 bg-[#ea4335]/10 px-3 py-1.5 rounded-full uppercase">
+                  <div className="w-1.5 h-1.5 bg-[#ea4335] rounded-full animate-ping"></div>
+                  Wake-lock: Run 'termux-wake-lock' to prevent keep-alive issues
+                </div>
              </header>
-             <div className="flex-1">
+             <div className="flex-1 min-h-0 bg-black rounded-3xl overflow-hidden border border-white/5">
                 <TerminalView wsUrl={WS_URL} />
              </div>
           </div>
