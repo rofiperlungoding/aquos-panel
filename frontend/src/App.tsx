@@ -59,8 +59,7 @@ function AppContent() {
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [showUpdateConfirm, setShowUpdateConfirm] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateCountdown, setUpdateCountdown] = useState<number | null>(null);
   const { addToast } = useToast();
 
   // Check for panel updates
@@ -74,16 +73,23 @@ function AppContent() {
   };
 
   const handlePanelUpdate = async () => {
-    setIsUpdating(true);
+    setUpdateCountdown(5);
     try {
-      await axios.post(`${API_URL}/system/update`);
-      addToast('success', 'Panel updating', 'Pull + reinstall + reload triggered. Page will refresh in ~15s.');
-      setShowUpdateConfirm(false);
-      // Auto-refresh after giving PM2 time to reload
-      setTimeout(() => window.location.reload(), 15000);
+      axios.post(`${API_URL}/system/update`).catch(e => console.error(e));
+      
+      let timeLeft = 5;
+      const timer = setInterval(() => {
+        timeLeft -= 1;
+        if (timeLeft <= 0) {
+          clearInterval(timer);
+          window.location.reload();
+        } else {
+          setUpdateCountdown(timeLeft);
+        }
+      }, 1000);
     } catch (e: any) {
-      addToast('error', 'Update failed', e.response?.data?.error || e.message);
-      setIsUpdating(false);
+      addToast('error', 'Update trigger failed', e.message);
+      setUpdateCountdown(null);
     }
   };
 
@@ -302,7 +308,7 @@ function AppContent() {
           {/* Update Available Banner */}
           {updateAvailable && (
             <button
-              onClick={() => setShowUpdateConfirm(true)}
+              onClick={handlePanelUpdate}
               className="w-full bg-gradient-to-r from-[#fbbc04] to-[#f9ab00] p-4 rounded-[20px] flex items-center gap-3 group hover:scale-[1.02] transition-all shadow-lg shadow-[#fbbc04]/20 animate-[slideUp_0.3s_ease-out]"
             >
               <div className="w-10 h-10 bg-white/20 rounded-[14px] flex items-center justify-center backdrop-blur-sm">
@@ -646,37 +652,20 @@ function AppContent() {
         </div>
       )}
 
-      {/* Update Confirmation Popup */}
-      {showUpdateConfirm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-6">
-          <div className="bg-white rounded-[32px] p-8 max-w-md w-full shadow-2xl animate-[scaleIn_0.2s_ease-out]">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-14 h-14 bg-gradient-to-br from-[#fbbc04] to-[#f9ab00] rounded-[20px] flex items-center justify-center shadow-lg shadow-[#fbbc04]/30">
-                <Download className="w-7 h-7 text-white" />
-              </div>
-              <div>
-                <h3 className="text-lg font-black text-[#202124]">Update Panel?</h3>
-                <p className="text-[12px] font-bold text-[#5f6368]">This will pull latest code from GitHub, reinstall deps, and reload the panel.</p>
-              </div>
-            </div>
-            <div className="bg-[#f8f9fa] rounded-[20px] p-4 mb-6 border border-[#f1f3f4]">
-              <p className="text-[10px] font-black text-[#5f6368] uppercase tracking-widest">What happens:</p>
-              <ul className="mt-2 space-y-1.5 text-[11px] font-bold text-[#202124]">
-                <li className="flex items-center gap-2"><div className="w-1 h-1 bg-[#1a73e8] rounded-full"></div> git pull origin master</li>
-                <li className="flex items-center gap-2"><div className="w-1 h-1 bg-[#1a73e8] rounded-full"></div> npm install (backend)</li>
-                <li className="flex items-center gap-2"><div className="w-1 h-1 bg-[#1a73e8] rounded-full"></div> PM2 reload aquos-panel</li>
-                <li className="flex items-center gap-2"><div className="w-1 h-1 bg-[#34a853] rounded-full"></div> Page auto-refreshes in ~15s</li>
-              </ul>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setShowUpdateConfirm(false)} disabled={isUpdating} className="flex-1 py-4 rounded-[20px] font-black text-sm text-[#5f6368] bg-[#f8f9fa] hover:bg-[#f1f3f4] transition-all disabled:opacity-50">
-                Cancel
-              </button>
-              <button onClick={handlePanelUpdate} disabled={isUpdating} className="flex-1 py-4 rounded-[20px] font-black text-sm text-white bg-gradient-to-r from-[#fbbc04] to-[#f9ab00] shadow-lg shadow-[#fbbc04]/20 hover:brightness-110 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70">
-                {isUpdating ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-                {isUpdating ? 'Updating...' : 'Update Now'}
-              </button>
-            </div>
+      {/* Update Countdown Overlay */}
+      {updateCountdown !== null && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex flex-col items-center justify-center p-6 animate-[fadeIn_0.3s_ease-out]">
+          <div className="w-24 h-24 bg-gradient-to-br from-[#fbbc04] to-[#f9ab00] rounded-full flex items-center justify-center mb-6 animate-pulse shadow-[0_0_50px_rgba(251,188,4,0.4)]">
+            <Zap className="w-10 h-10 text-white" />
+          </div>
+          <h2 className="text-3xl font-black text-white mb-2 tracking-tight">Applying Update...</h2>
+          <p className="text-[#9aa0a6] font-bold text-lg mb-8 tracking-widest uppercase text-[12px]">Panel restarts in {updateCountdown}s</p>
+          
+          <div className="w-64 h-2 bg-white/10 rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-gradient-to-r from-[#fbbc04] to-[#f9ab00] transition-all duration-1000 ease-linear" 
+              style={{ width: `${((5 - updateCountdown) / 5) * 100}%` }}
+            ></div>
           </div>
         </div>
       )}
