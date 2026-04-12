@@ -365,52 +365,58 @@ async function getProjectDetail(name) {
         });
     });
 
-    // Get git info using projectRoot
-    const projectRoot = meta.serverPath.endsWith(path.sep + 'server')
-        ? path.dirname(meta.serverPath)
-        : meta.serverPath;
+    // Determine the working directory
+    // Priority: meta.serverPath > pm2Info.pm2_env.pm_cwd
+    const workingDir = meta.serverPath || pm2Info?.pm2_env?.pm_cwd || process.cwd();
+
+    // The project root is usually workingDir, but we check if it's a subfolder like 'server/'
+    let projectRoot = workingDir;
+    if (workingDir.endsWith(path.sep + 'server')) {
+        projectRoot = path.dirname(workingDir);
+    }
 
     let gitInfo = {};
-    if (meta.repoUrl !== 'Unknown') {
-        try {
-            const { stdout: branch } = await execPromise(`git -C "${projectRoot}" rev-parse --abbrev-ref HEAD`);
-            const { stdout: commitHash } = await execPromise(`git -C "${projectRoot}" rev-parse --short HEAD`);
-            const { stdout: commitMsg } = await execPromise(`git -C "${projectRoot}" log -1 --pretty=format:"%s"`);
-            const { stdout: commitDate } = await execPromise(`git -C "${projectRoot}" log -1 --pretty=format:"%ci"`);
+    try {
+        // Check if it's actually a git repo
+        await execPromise(`git -C "${projectRoot}" rev-parse --is-inside-work-tree`);
+        
+        const { stdout: branch } = await execPromise(`git -C "${projectRoot}" rev-parse --abbrev-ref HEAD`);
+        const { stdout: commitHash } = await execPromise(`git -C "${projectRoot}" rev-parse --short HEAD`);
+        const { stdout: commitMsg } = await execPromise(`git -C "${projectRoot}" log -1 --pretty=format:"%s"`);
+        const { stdout: commitDate } = await execPromise(`git -C "${projectRoot}" log -1 --pretty=format:"%ci"`);
+        const { stdout: remoteUrl } = await execPromise(`git -C "${projectRoot}" config --get remote.origin.url`).catch(() => ({ stdout: '' }));
 
-            gitInfo = {
-                branch: branch.trim(),
-                lastCommit: {
-                    hash: commitHash.trim(),
-                    message: commitMsg.trim(),
-                    date: commitDate.trim()
-                }
-            };
-        } catch (e) {
-            gitInfo = { error: 'Could not read git info' };
-        }
-    } else {
-        gitInfo = { error: 'Not managed by panel deployer' };
+        gitInfo = {
+            branch: branch.trim(),
+            lastCommit: {
+                hash: commitHash.trim(),
+                message: commitMsg.trim(),
+                date: commitDate.trim()
+            },
+            remoteUrl: remoteUrl.trim() || meta.repoUrl
+        };
+    } catch (e) {
+        gitInfo = { error: 'Not a git repository or git not found' };
     }
 
     // Get folder size
     let diskSize = 'unknown';
     try {
-        const { stdout } = await execPromise(`du -sh "${meta.serverPath}" | awk '{print $1}'`);
+        const { stdout } = await execPromise(`du -sh "${workingDir}" | awk '{print $1}'`);
         diskSize = stdout.trim();
-    } catch (e) { /* ignore, works only on linux */ }
+    } catch (e) { /* ignore */ }
 
     return {
         name,
-        repoUrl: meta.repoUrl,
-        branch: meta.branch,
+        repoUrl: gitInfo.remoteUrl || meta.repoUrl,
+        branch: gitInfo.branch || meta.branch,
         port: meta.port,
         stack: meta.stack,
         entryFile: meta.entryFile,
         envVars: meta.envVars || {},
         deployedAt: meta.deployedAt,
         lastUpdated: meta.lastUpdated,
-        serverPath: meta.serverPath,
+        serverPath: workingDir,
         diskSize,
         git: gitInfo,
         process: pm2Info ? {
