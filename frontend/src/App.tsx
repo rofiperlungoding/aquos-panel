@@ -186,7 +186,25 @@ function AppContent() {
     if (token) {
         fetchData();
         const intv = setInterval(fetchData, 3000);
-        return () => clearInterval(intv);
+        
+        // Local ticker for uptime to make it look "alive"
+        const ticker = setInterval(() => {
+          setStats((prev: any) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              system: {
+                ...prev.system,
+                uptime: prev.system.uptime + 1
+              }
+            };
+          });
+        }, 1000);
+
+        return () => {
+          clearInterval(intv);
+          clearInterval(ticker);
+        };
     }
   }, [token]);
 
@@ -340,9 +358,16 @@ function AppContent() {
                   <p className="text-[12px] text-[#5f6368] font-bold opacity-60">Real-time health of global hardware nodes</p>
                 </div>
                 <div className="flex gap-2">
-                   <div className="bg-white border px-4 py-2 rounded-2xl shadow-sm text-xs font-bold flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-[#1a73e8]" /> {Math.floor(stats.system.uptime/3600)}h {Math.floor((stats.system.uptime%3600)/60)}m Online
-                   </div>
+                    <div className="bg-white border px-4 py-2 rounded-2xl shadow-sm text-xs font-bold flex items-center gap-2">
+                       <Clock className="w-4 h-4 text-[#1a73e8]" /> 
+                       {(() => {
+                          const s = stats.system.uptime;
+                          const h = Math.floor(s / 3600);
+                          const m = Math.floor((s % 3600) / 60);
+                          const sec = Math.floor(s % 60);
+                          return `${h}h ${m}m ${sec}s Online`;
+                       })()}
+                    </div>
                 </div>
              </header>
 
