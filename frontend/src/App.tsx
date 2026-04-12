@@ -373,33 +373,70 @@ function AppContent() {
 
              {/* Stats Grid */}
              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Global Load (CPU) */}
                 <div className="bg-white p-6 rounded-[32px] border border-[#f1f3f4] shadow-sm flex items-center gap-5 group hover:border-[#1a73e8]/20 transition-all">
                    <div className="w-16 h-16 bg-[#e8f0fe] rounded-[24px] flex items-center justify-center">
                       <Activity className="text-[#1a73e8] w-8 h-8" />
                    </div>
-                   <div>
+                   <div className="flex-1">
                       <div className="text-[10px] font-black uppercase tracking-widest text-[#5f6368] opacity-50 mb-1">Global Load</div>
-                      <div className="text-3xl font-black text-[#202124]">{stats.system.cpu}%</div>
+                      <div className="text-3xl font-black text-[#202124] flex items-baseline gap-2">
+                        {stats.system.cpu}%
+                        <span className="text-[10px] font-bold text-[#5f6368] opacity-60">system</span>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="flex-1 h-1.5 bg-[#f1f3f4] rounded-full overflow-hidden flex">
+                          <div className="h-full bg-[#1a73e8]" style={{ width: `${Math.min(100, stats.panel.cpu)}%` }}></div>
+                          <div className="h-full bg-[#34a853]" style={{ width: `${Math.min(100, projects.reduce((acc: number, p: any) => acc + (p.process?.cpu || 0), 0))}%` }}></div>
+                        </div>
+                        <div className="text-[9px] font-black text-[#5f6368] uppercase">
+                          Apps: {projects.reduce((acc: number, p: any) => acc + (p.process?.cpu || 0), 0).toFixed(1)}%
+                        </div>
+                      </div>
                    </div>
                 </div>
 
+                {/* Memory Index (RAM) */}
                 <div className="bg-white p-6 rounded-[32px] border border-[#f1f3f4] shadow-sm flex items-center gap-5 group hover:border-[#1a73e8]/20 transition-all">
                    <div className="w-16 h-16 bg-[#fde9e9] rounded-[24px] flex items-center justify-center">
                       <Database className="text-[#ea4335] w-8 h-8" />
                    </div>
-                   <div>
+                   <div className="flex-1">
                       <div className="text-[10px] font-black uppercase tracking-widest text-[#5f6368] opacity-50 mb-1">Memory Index</div>
-                      <div className="text-3xl font-black text-[#202124]">{stats.system.ram.percentage}%</div>
+                      <div className="text-3xl font-black text-[#202124] flex items-baseline gap-2">
+                        {stats.system.ram.percentage}%
+                        <span className="text-[10px] font-bold text-[#5f6368] opacity-60">used</span>
+                      </div>
+                      <div className="mt-2 space-y-1">
+                        <div className="flex justify-between text-[9px] font-black tracking-wider uppercase text-[#5f6368]">
+                          <span>Panel: {stats.panel.mem}MB</span>
+                          <span>Apps: {(projects.reduce((acc: number, p: any) => acc + (p.process?.memory || 0), 0) / (1024*1024)).toFixed(0)}MB</span>
+                        </div>
+                        <div className="h-1 bg-[#f1f3f4] rounded-full overflow-hidden flex">
+                          <div className="h-full bg-[#ea4335]" style={{ width: `${(parseFloat(stats.panel.mem) / (parseFloat(stats.system.ram.total)*1024)) * 100}%` }}></div>
+                          <div className="h-full bg-orange-400" style={{ width: `${(projects.reduce((acc: number, p: any) => acc + (p.process?.memory || 0), 0) / (parseFloat(stats.system.ram.total)*1024*1024*1024)) * 100}%` }}></div>
+                        </div>
+                      </div>
                    </div>
                 </div>
 
+                {/* Storage Hub (Disk) */}
                 <div className="bg-white p-6 rounded-[32px] border border-[#f1f3f4] shadow-sm flex items-center gap-5 group hover:border-[#1a73e8]/20 transition-all">
                    <div className="w-16 h-16 bg-[#e6f4ea] rounded-[24px] flex items-center justify-center">
                       <HardDrive className="text-[#34a853] w-8 h-8" />
                    </div>
-                   <div>
+                   <div className="flex-1">
                       <div className="text-[10px] font-black uppercase tracking-widest text-[#5f6368] opacity-50 mb-1">Storage Hub</div>
-                      <div className="text-3xl font-black text-[#202124]">{stats.system.disk.percentage}%</div>
+                      <div className="text-3xl font-black text-[#202124] flex items-baseline gap-2">
+                        {stats.system.disk.percentage}%
+                        <span className="text-[10px] font-bold text-[#5f6368] opacity-60">full</span>
+                      </div>
+                      <div className="mt-2 flex justify-between items-center text-[9px] font-black text-[#5f6368] uppercase tracking-wider">
+                        <span>{stats.system.disk.used} GB / {stats.system.disk.total} GB</span>
+                        <div className="w-12 h-1 bg-[#34a853]/20 rounded-full overflow-hidden">
+                          <div className="h-full bg-[#34a853]" style={{ width: `${stats.system.disk.percentage}%` }}></div>
+                        </div>
+                      </div>
                    </div>
                 </div>
              </div>

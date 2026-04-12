@@ -37,20 +37,43 @@ async function getStats() {
         const selfUsage = await pidusage(process.pid);
         const panelMem = selfUsage.memory; // in bytes
 
-        let diskRaw = { total: 0, free: 0, used: 0, percentage: 0 };
+        // Get disk stats robustly
+        let diskRaw = { total: 0, used: 0, free: 0, percentage: 0 };
         try {
-            if (os.platform() !== 'win32') {
-                // Better disk precision using df -B format
-                const { stdout } = await execPromise('df -B1 /data | tail -1 | awk \'{print $2,$3,$4}\'');
-                const [total, used, free] = stdout.trim().split(/\s+/).map(n => parseInt(n, 10));
-                if (!isNaN(total)) {
+            const isWin = os.platform() === 'win32';
+            if (!isWin) {
+                // Try / first, then /data (Termux use /data/data/com.termux/files/home usually, but / should work)
+                const pathsToTry = ['/', '/data', '/home'];
+                let diskData = null;
+
+                for (const p of pathsToTry) {
+                    try {
+                        const { stdout } = await execPromise(`df -k "${p}" | tail -1`);
+                        const parts = stdout.trim().split(/\s+/);
+                        // Filesystem, 1K-blocks, Used, Available, Use%, Mounted on
+                        if (parts.length >= 5) {
+                            const total = parseInt(parts[1]); // in KB
+                            const used = parseInt(parts[2]);
+                            const free = parseInt(parts[3]);
+                            if (!isNaN(total) && total > 0) {
+                                diskData = { total, used, free };
+                                break;
+                            }
+                        }
+                    } catch (e) {}
+                }
+
+                if (diskData) {
                     diskRaw = {
-                        total: (total / (1024**3)).toFixed(1), // GB
-                        used: (used / (1024**3)).toFixed(1),   // GB
-                        free: (free / (1024**3)).toFixed(1),   // GB
-                        percentage: Math.round((used / total) * 100)
+                        total: (diskData.total / (1024*1024)).toFixed(1), // GB
+                        used: (diskData.used / (1024*1024)).toFixed(1),   // GB
+                        free: (diskData.free / (1024*1024)).toFixed(1),   // GB
+                        percentage: Math.round((diskData.used / diskData.total) * 100)
                     };
                 }
+            } else {
+                // Basic windows disk info (limited in node os)
+                diskRaw = { total: 'N/A', used: 'N/A', free: 'N/A', percentage: 0 };
             }
         } catch (e) {}
 
