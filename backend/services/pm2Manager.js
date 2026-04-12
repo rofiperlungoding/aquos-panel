@@ -376,43 +376,66 @@ async function getProjectDetail(name) {
     }
 
     let gitInfo = {};
-    try {
-        // Check if it's actually a git repo
-        await execPromise(`git -C "${projectRoot}" rev-parse --is-inside-work-tree`);
-        
-        const { stdout: branch } = await execPromise(`git -C "${projectRoot}" rev-parse --abbrev-ref HEAD`);
-        const { stdout: commitHash } = await execPromise(`git -C "${projectRoot}" rev-parse --short HEAD`);
-        const { stdout: commitMsg } = await execPromise(`git -C "${projectRoot}" log -1 --pretty=format:"%s"`);
-        const { stdout: commitDate } = await execPromise(`git -C "${projectRoot}" log -1 --pretty=format:"%ci"`);
-        const { stdout: remoteUrl } = await execPromise(`git -C "${projectRoot}" config --get remote.origin.url`).catch(() => ({ stdout: '' }));
-
-        gitInfo = {
-            branch: branch.trim(),
-            lastCommit: {
-                hash: commitHash.trim(),
-                message: commitMsg.trim(),
-                date: commitDate.trim()
-            },
-            remoteUrl: remoteUrl.trim() || meta.repoUrl
-        };
-    } catch (e) {
-        gitInfo = { error: 'Not a git repository or git not found' };
-    }
-
-    // Get folder size
     let diskSize = 'unknown';
+
+    // Run parallel tasks for speed
     try {
-        const { stdout } = await execPromise(`du -sh "${workingDir}" | awk '{print $1}'`);
-        diskSize = stdout.trim();
-    } catch (e) { /* ignore */ }
+        const [gitData, duData] = await Promise.all([
+            // Task 1: Batched Git Info
+            (async () => {
+                try {
+                    // Check if git exists and it's a repo
+                    await execPromise(`git -C "${projectRoot}" rev-parse --is-inside-work-tree`, { timeout: 2000 });
+                    
+                    // Get multiple fields in ONE call: branch, hash, subject, author date
+                    const { stdout } = await execPromise(
+                        `git -C "${projectRoot}" log -1 --pretty=format:"%D|%h|%s|%ci"`, 
+                        { timeout: 3000 }
+                    );
+                    
+                    const [branchRaw, hash, msg, date] = stdout.trim().split('|');
+                    // Parse branch from "HEAD -> master, origin/master"
+                    const branch = branchRaw.includes('->') 
+                        ? branchRaw.split('->')[1].split(',')[0].trim()
+                        : branchRaw.trim() || 'main';
+
+                    return {
+                        branch,
+                        lastCommit: { hash, message: msg, date },
+                        isGit: true
+                    };
+                } catch (e) { return { isGit: false }; }
+            })(),
+            
+            // Task 2: Disk Size (with 3s timeout as it can be very slow)
+            (async () => {
+                try {
+                    const { stdout } = await execPromise(`du -sh "${workingDir}" | awk '{print $1}'`, { timeout: 3000 });
+                    return stdout.trim();
+                } catch (e) { return 'unknown'; }
+            })()
+        ]);
+
+        if (gitData.isGit) {
+            gitInfo = {
+                branch: gitData.branch,
+                lastCommit: gitData.lastCommit
+            };
+        } else {
+            gitInfo = { error: 'Not a git repository' };
+        }
+        diskSize = duData;
+    } catch (e) {
+        gitInfo = { error: 'Fetch timeout' };
+    }
 
     return {
         name,
-        repoUrl: gitInfo.remoteUrl || meta.repoUrl,
-        branch: gitInfo.branch || meta.branch,
-        port: meta.port,
-        stack: meta.stack,
-        entryFile: meta.entryFile,
+        repoUrl: meta.repoUrl !== 'Unknown' ? meta.repoUrl : (gitInfo.branch ? 'Local Git Repo' : 'N/A'),
+        branch: gitInfo.branch || meta.branch || 'main',
+        port: meta.port || 'N/A',
+        stack: meta.stack || 'Unknown',
+        entryFile: meta.entryFile || 'N/A',
         envVars: meta.envVars || {},
         deployedAt: meta.deployedAt,
         lastUpdated: meta.lastUpdated,
