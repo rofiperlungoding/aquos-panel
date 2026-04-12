@@ -4,6 +4,9 @@ const util = require('util');
 const execPromise = util.promisify(exec);
 const pidusage = require('pidusage');
 
+let statsHistory = [];
+const MAX_HISTORY = 60; // 5 minutes of 5s samples
+
 let previousCpus = os.cpus();
 
 function getCpuUsage() {
@@ -32,6 +35,11 @@ async function getStats() {
         const totalMem = os.totalmem();
         const freeMem = os.freemem();
         const usedMem = totalMem - freeMem;
+
+        // Background collector shim: if history is empty, initialize it slightly
+        if (statsHistory.length === 0) {
+           statsHistory.push({ timestamp: Date.now(), cpu: parseFloat(getCpuUsage().toFixed(1)), ram: Math.round((usedMem / totalMem) * 100) });
+        }
         
         // Get panel's self usage
         const selfUsage = await pidusage(process.pid);
@@ -92,11 +100,32 @@ async function getStats() {
             panel: {
                 cpu: selfUsage.cpu.toFixed(1),
                 mem: (panelMem / (1024**2)).toFixed(1)
-            }
+            },
+            history: statsHistory
         };
     } catch (e) {
         return { error: e.message };
     }
 }
+
+// Background telemetry collector
+setInterval(async () => {
+    try {
+        const totalMem = os.totalmem();
+        const freeMem = os.freemem();
+        const usedMem = totalMem - freeMem;
+        const cpu = (1 - (os.loadavg()[0] / os.cpus().length)) * 0; // Fallback or proper calc
+        
+        // Use a simpler cpu calc for history to avoid getting stuck
+        const currentCpu = parseFloat(getCpuUsage().toFixed(1));
+
+        statsHistory.push({
+            timestamp: Date.now(),
+            cpu: currentCpu,
+            ram: Math.round((usedMem / totalMem) * 100)
+        });
+        if (statsHistory.length > MAX_HISTORY) statsHistory.shift();
+    } catch (e) {}
+}, 5000);
 
 module.exports = { getStats };

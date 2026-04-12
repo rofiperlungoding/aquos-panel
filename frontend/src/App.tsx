@@ -130,14 +130,22 @@ function AppContent() {
       const newStats = sRes.data;
       setStats(newStats);
 
-      setHistory(prev => {
-        const newData = [...prev, {
-          time: new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          cpu: parseFloat(newStats.system.cpu),
-          ram: newStats.system.ram.percentage
-        }].slice(-20);
-        return newData;
-      });
+      if (newStats.history && newStats.history.length > 0) {
+        setHistory(newStats.history.map((h: any) => ({
+          time: new Date(h.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          cpu: h.cpu,
+          ram: h.ram
+        })));
+      } else {
+        setHistory(prev => {
+          const entry = {
+            time: new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            cpu: parseFloat(newStats.system.cpu),
+            ram: newStats.system.ram.percentage
+          };
+          return [...prev, entry].slice(-30);
+        });
+      }
     } catch (e: any) {
       if (e.response?.status === 401 || e.response?.status === 403) {
         handleLogout();
