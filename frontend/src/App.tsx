@@ -19,7 +19,12 @@ import {
   Lock,
   Unlock,
   LogOut,
-  ShieldCheck
+  ShieldCheck,
+  GitBranch,
+  Rocket,
+  Download,
+  Zap,
+  AlertTriangle
 } from 'lucide-react';
 import { 
   XAxis, 
@@ -31,12 +36,15 @@ import {
   Area 
 } from 'recharts';
 import TerminalView from './components/TerminalView';
+import DeployModal from './components/DeployModal';
+import ProjectDetail from './components/ProjectDetail';
+import { ToastProvider, useToast } from './components/Toast';
 
 const API_URL = '/api';
 const WS_PROTOCOL = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const WS_URL = `${WS_PROTOCOL}//${window.location.host}`;
 
-function App() {
+function AppContent() {
   const [token, setToken] = useState(localStorage.getItem('aquos_token'));
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -45,12 +53,45 @@ function App() {
   const [stats, setStats] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [repoUrl, setRepoUrl] = useState('');
+  const [branch, setBranch] = useState('main');
   const [deploying, setDeploying] = useState(false);
+  const [showDeployModal, setShowDeployModal] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [showUpdateConfirm, setShowUpdateConfirm] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const { addToast } = useToast();
 
-  // Configure Axios with Token
+  // Check for panel updates
+  const checkForPanelUpdate = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/system/check-update`);
+      setUpdateAvailable(res.data.updateAvailable);
+    } catch {
+      // silently fail — not critical
+    }
+  };
+
+  const handlePanelUpdate = async () => {
+    setIsUpdating(true);
+    try {
+      await axios.post(`${API_URL}/system/update`);
+      addToast('success', 'Panel updating', 'Pull + reinstall + reload triggered. Page will refresh in ~15s.');
+      setShowUpdateConfirm(false);
+      // Auto-refresh after giving PM2 time to reload
+      setTimeout(() => window.location.reload(), 15000);
+    } catch (e: any) {
+      addToast('error', 'Update failed', e.response?.data?.error || e.message);
+      setIsUpdating(false);
+    }
+  };
+
+  // Configure Axios with Token + check for updates
   useEffect(() => {
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      checkForPanelUpdate();
     }
   }, [token]);
 
@@ -99,18 +140,46 @@ function App() {
   };
 
   const handleAction = async (name: string, action: string) => {
+    if (action === 'delete') {
+      setDeleteConfirm(name);
+      return;
+    }
     try {
       await axios.post(`${API_URL}/projects/${name}/action`, { action });
+      addToast('success', `${action.charAt(0).toUpperCase() + action.slice(1)}ed`, `${name} has been ${action}ed.`);
       fetchData();
-    } catch (e) {
-      alert("Action failed: " + action);
+    } catch (e: any) {
+      addToast('error', 'Action failed', e.response?.data?.error || e.message);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirm) return;
+    const name = deleteConfirm;
+    setDeleteConfirm(null);
+    try {
+      await axios.post(`${API_URL}/projects/${name}/action`, { action: 'delete' });
+      addToast('success', 'Deleted', `${name} has been removed.`);
+      fetchData();
+    } catch (e: any) {
+      addToast('error', 'Delete failed', e.response?.data?.error || e.message);
+    }
+  };
+
+  const handleUpdate = async (name: string) => {
+    try {
+      await axios.post(`${API_URL}/projects/${name}/update`);
+      addToast('success', 'Updated', `${name} pulled latest code and restarted.`);
+      fetchData();
+    } catch (e: any) {
+      addToast('error', 'Update failed', e.response?.data?.error || e.message);
     }
   };
 
   useEffect(() => {
     if (token) {
         fetchData();
-        const intv = setInterval(fetchData, 2000);
+        const intv = setInterval(fetchData, 3000);
         return () => clearInterval(intv);
     }
   }, [token]);
@@ -119,22 +188,29 @@ function App() {
     e.preventDefault();
     if (!repoUrl) return;
     setDeploying(true);
+    setShowDeployModal(true);
+
     try {
-      await axios.post(`${API_URL}/projects`, { repoUrl });
+      await axios.post(`${API_URL}/projects`, { repoUrl, branch });
       setRepoUrl('');
+      setBranch('main');
       fetchData();
-      setActiveTab('resources');
     } catch (e: any) {
-      alert("Deployment failed: " + (e.response?.data?.error || e.message));
+      addToast('error', 'Deployment failed', e.response?.data?.error || e.message);
     } finally {
       setDeploying(false);
     }
   };
 
-  // LOGIN SCREEN
+  const onDeployModalClose = () => {
+    setShowDeployModal(false);
+    setActiveTab('resources');
+    fetchData();
+  };
+
+  // ─── LOGIN SCREEN ───────────────────────────────────────────────────────────
   if (!token) return (
     <div className="h-screen bg-[#0f1115] flex flex-col items-center justify-center font-['Plus_Jakarta_Sans'] p-6 overflow-hidden relative">
-      {/* Animated Background Elements */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#1a73e8] rounded-full blur-[120px] opacity-20 animate-pulse"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#ea4335] rounded-full blur-[120px] opacity-10 animate-pulse" style={{animationDelay: '1s'}}></div>
       
@@ -177,11 +253,13 @@ function App() {
     </div>
   );
 
+  // ─── LOADING ────────────────────────────────────────────────────────────────
   if (!stats) return <div className="h-screen bg-[#f8f9fa] flex flex-col items-center justify-center font-bold text-[#1a73e8] animate-pulse">
     <Server className="w-12 h-12 mb-4 animate-bounce" />
     <span className="text-xl">Establishing Uplink...</span>
   </div>;
 
+  // ─── MAIN APP ───────────────────────────────────────────────────────────────
   return (
     <div className="flex h-screen bg-[#f8f9fa] text-[#202124] font-['Plus_Jakarta_Sans'] antialiased overflow-hidden">
       {/* Navigation Rail */}
@@ -191,7 +269,7 @@ function App() {
             <span className="text-[#1a73e8] font-black text-xl flex items-center gap-2 leading-none">
               <Box className="w-6 h-6 fill-[#1a73e8]/10" /> AQUOS
             </span>
-            <span className="text-[10px] text-[#202124] font-black tracking-[0.05em] uppercase opacity-40 mt-1">Global Access v1.3.0</span>
+            <span className="text-[10px] text-[#202124] font-black tracking-[0.05em] uppercase opacity-40 mt-1">Global Access v2.0.0</span>
           </div>
         </div>
 
@@ -216,7 +294,27 @@ function App() {
               <div className="w-2 h-2 bg-[#34a853] rounded-full shadow-[0_0_8px_#34a853]"></div>
               Jakarta-HQ-Global
             </div>
+            <div className="mt-2 text-[10px] font-bold text-[#5f6368]">
+              {projects.filter((p: any) => p.status === 'online').length} / {projects.length} instances online
+            </div>
           </div>
+
+          {/* Update Available Banner */}
+          {updateAvailable && (
+            <button
+              onClick={() => setShowUpdateConfirm(true)}
+              className="w-full bg-gradient-to-r from-[#fbbc04] to-[#f9ab00] p-4 rounded-[20px] flex items-center gap-3 group hover:scale-[1.02] transition-all shadow-lg shadow-[#fbbc04]/20 animate-[slideUp_0.3s_ease-out]"
+            >
+              <div className="w-10 h-10 bg-white/20 rounded-[14px] flex items-center justify-center backdrop-blur-sm">
+                <Download className="w-5 h-5 text-white" />
+              </div>
+              <div className="text-left">
+                <div className="text-[11px] font-black text-white uppercase tracking-wider">Update Available</div>
+                <div className="text-[9px] font-bold text-white/70 uppercase tracking-widest">Tap to install latest</div>
+              </div>
+              <Zap className="w-4 h-4 text-white/80 ml-auto group-hover:scale-110 transition-transform" />
+            </button>
+          )}
           
           <button onClick={handleLogout} className="w-full p-3 rounded-[18px] flex items-center justify-center gap-2 font-black text-[10px] uppercase tracking-widest text-[#ea4335] hover:bg-[#ea4335]/5 transition-all">
             <LogOut className="w-3.5 h-3.5" /> Terminate Session
@@ -227,8 +325,9 @@ function App() {
       {/* Main Framework */}
       <main className="flex-1 flex flex-col overflow-hidden bg-[#fafbfc]">
         
+        {/* TAB: OPERATIONS HUB */}
         {activeTab === 'compute' && (
-          <div className="flex-1 overflow-y-auto p-8 space-y-6 animate-in fade-in duration-500">
+          <div className="flex-1 overflow-y-auto p-8 space-y-6">
              <header className="flex justify-between items-center">
                 <div>
                   <h1 className="text-2xl font-black text-[#202124] tracking-tight">System Infrastructure</h1>
@@ -241,7 +340,7 @@ function App() {
                 </div>
              </header>
 
-             {/* Modern Compact Grid */}
+             {/* Stats Grid */}
              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white p-6 rounded-[32px] border border-[#f1f3f4] shadow-sm flex items-center gap-5 group hover:border-[#1a73e8]/20 transition-all">
                    <div className="w-16 h-16 bg-[#e8f0fe] rounded-[24px] flex items-center justify-center">
@@ -274,70 +373,94 @@ function App() {
                 </div>
              </div>
 
+             {/* Deploy Box */}
              <div className="bg-[#1a73e8] rounded-[40px] p-10 text-white shadow-2xl shadow-[#1a73e8]/20 relative overflow-hidden group">
                 <div className="absolute top-0 right-0 p-12 opacity-10 group-hover:scale-110 transition-transform">
-                   <Box className="w-48 h-48 -rotate-12" />
+                   <Rocket className="w-48 h-48 -rotate-12" />
                 </div>
                 <div className="relative z-10 max-w-2xl">
-                   <h2 className="text-2xl font-black tracking-tight mb-2">Global Instance Provisioning</h2>
-                   <p className="text-sm font-bold text-white/70 mb-8 italic">Automated production-scale deployment for remote microservices.</p>
+                   <h2 className="text-2xl font-black tracking-tight mb-2">Deploy from GitHub</h2>
+                   <p className="text-sm font-bold text-white/70 mb-8 italic">Paste a repo URL → auto-clones the <code className="bg-white/10 px-1.5 py-0.5 rounded text-white/90 not-italic">server/</code> folder → installs deps → runs on PM2.</p>
                    
-                   <form onSubmit={handleDeploy} className="flex gap-4">
-                     <div className="flex-1 relative">
-                       <input 
-                         type="text" 
-                         value={repoUrl}
-                         onChange={(e) => setRepoUrl(e.target.value)}
-                         placeholder="Enter repository URL..."
-                         className="w-full pl-6 pr-6 py-4 bg-white/10 border-2 border-white/20 focus:border-white/40 rounded-[22px] outline-none text-sm font-bold placeholder:text-white/30 backdrop-blur-md transition-all"
-                       />
+                   <form onSubmit={handleDeploy} className="space-y-4">
+                     <div className="flex gap-4">
+                       <div className="flex-1 relative">
+                         <input 
+                           type="text" 
+                           value={repoUrl}
+                           onChange={(e) => setRepoUrl(e.target.value)}
+                           placeholder="https://github.com/user/repo"
+                           className="w-full pl-6 pr-6 py-4 bg-white/10 border-2 border-white/20 focus:border-white/40 rounded-[22px] outline-none text-sm font-bold placeholder:text-white/30 backdrop-blur-md transition-all"
+                         />
+                       </div>
+                       <div className="w-36 relative">
+                         <GitBranch className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
+                         <input 
+                           type="text" 
+                           value={branch}
+                           onChange={(e) => setBranch(e.target.value)}
+                           placeholder="main"
+                           className="w-full pl-10 pr-4 py-4 bg-white/10 border-2 border-white/20 focus:border-white/40 rounded-[22px] outline-none text-sm font-bold placeholder:text-white/30 transition-all"
+                         />
+                       </div>
+                       <button 
+                         disabled={deploying || !repoUrl}
+                         className="bg-white text-[#1a73e8] px-10 py-4 rounded-[22px] font-black text-sm uppercase shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                       >
+                         {deploying ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                         {deploying ? 'DEPLOYING...' : 'DEPLOY'}
+                       </button>
                      </div>
-                     <button 
-                       disabled={deploying}
-                       className="bg-white text-[#1a73e8] px-10 py-4 rounded-[22px] font-black text-sm uppercase shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2"
-                     >
-                       {deploying ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                       {deploying ? 'PROVISIONING...' : 'INITIALIZE'}
-                     </button>
                    </form>
                 </div>
              </div>
 
+             {/* Active Projects Preview */}
              <div className="bg-white border border-[#f1f3f4] rounded-[32px] p-6">
                 <div className="flex justify-between items-center mb-6 px-2">
-                   <h3 className="text-sm font-black text-[#202124] uppercase tracking-wider">Active Summary</h3>
-                   <span className="text-[10px] font-black text-[#1a73e8] bg-[#e8f0fe] px-3 py-1 rounded-full uppercase">{projects.length} Total Nodes</span>
+                   <h3 className="text-sm font-black text-[#202124] uppercase tracking-wider">Active Instances</h3>
+                   <span className="text-[10px] font-black text-[#1a73e8] bg-[#e8f0fe] px-3 py-1 rounded-full uppercase">{projects.length} Total</span>
                 </div>
-                <div className="space-y-3">
-                   {projects.slice(0, 3).map((p: any) => (
-                      <div key={p.name} className="flex items-center justify-between p-4 bg-[#fbfcfd] border border-[#f1f3f4] rounded-[24px] hover:border-[#1a73e8]/20 transition-all cursor-pointer" onClick={() => setActiveTab('resources')}>
-                         <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 bg-white shadow-sm border border-[#f1f3f4] rounded-xl flex items-center justify-center">
-                               <Code className="w-5 h-5 text-[#1a73e8]" />
-                            </div>
-                            <div>
-                               <div className="text-sm font-extrabold text-[#202124]">{p.name}</div>
-                               <div className="text-[9px] font-bold text-[#5f6368] uppercase tracking-widest">{p.stack || 'NODEJS'} CORE</div>
-                            </div>
-                         </div>
-                         <div className="flex items-center gap-8">
-                            <div className="text-right">
-                               <div className="text-[12px] font-black text-[#202124]">{p.cpu}%</div>
-                               <div className="text-[8px] font-bold text-[#5f6368] opacity-40 uppercase tracking-widest">CPU</div>
-                            </div>
-                            <div className="px-3 py-1.5 bg-[#e6f4ea] text-[#34a853] rounded-lg text-[10px] font-black">STABLE</div>
-                            <ChevronRight className="text-[#dadce0] w-5 h-5" />
-                         </div>
-                      </div>
-                   ))}
-                </div>
+
+                {projects.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Rocket className="w-12 h-12 text-[#dadce0] mx-auto mb-4" />
+                    <p className="text-[14px] font-black text-[#9aa0a6]">No instances deployed yet</p>
+                    <p className="text-[11px] font-bold text-[#dadce0] mt-1">Paste a GitHub URL above to get started</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {projects.slice(0, 5).map((p: any) => (
+                       <div key={p.name} className="flex items-center justify-between p-4 bg-[#fbfcfd] border border-[#f1f3f4] rounded-[24px] hover:border-[#1a73e8]/20 transition-all cursor-pointer group" onClick={() => setSelectedProject(p.name)}>
+                          <div className="flex items-center gap-4">
+                             <div className="w-10 h-10 bg-white shadow-sm border border-[#f1f3f4] rounded-xl flex items-center justify-center">
+                                <Code className="w-5 h-5 text-[#1a73e8]" />
+                             </div>
+                             <div>
+                                <div className="text-sm font-extrabold text-[#202124]">{p.name}</div>
+                                <div className="text-[9px] font-bold text-[#5f6368] uppercase tracking-widest flex items-center gap-2">
+                                  {p.stack || 'NODEJS'} · :{p.port}
+                                </div>
+                             </div>
+                          </div>
+                          <div className="flex items-center gap-4">
+                             <span className={`flex items-center gap-1.5 text-[10px] font-black uppercase ${p.status === 'online' ? 'text-[#34a853]' : 'text-[#ea4335]'}`}>
+                               <div className={`w-2 h-2 rounded-full ${p.status === 'online' ? 'bg-[#34a853] shadow-[0_0_8px_#34a853]' : 'bg-[#ea4335]'}`}></div>
+                               {p.status}
+                             </span>
+                             <ChevronRight className="text-[#dadce0] w-5 h-5 group-hover:text-[#1a73e8] transition-colors" />
+                          </div>
+                       </div>
+                    ))}
+                  </div>
+                )}
              </div>
           </div>
         )}
 
-        {/* TAB: RESOURCES */}
+        {/* TAB: WORKLOADS & INSIGHTS */}
         {activeTab === 'resources' && (
-          <div className="flex-1 overflow-y-auto p-8 space-y-8 animate-in slide-in-from-right-4 duration-500">
+          <div className="flex-1 overflow-y-auto p-8 space-y-8">
              <header className="flex justify-between items-center">
                 <div>
                   <h1 className="text-2xl font-black text-[#202124]">Performance Analytics</h1>
@@ -348,6 +471,7 @@ function App() {
                 </div>
              </header>
 
+             {/* Charts */}
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-white p-6 rounded-[32px] border border-[#f1f3f4] shadow-sm">
                    <div className="flex justify-between items-center mb-6">
@@ -396,50 +520,76 @@ function App() {
                 </div>
              </div>
 
+             {/* Projects Table */}
              <div className="bg-white rounded-[32px] border border-[#f1f3f4] overflow-hidden shadow-sm">
-                <table className="w-full text-left">
-                   <thead className="bg-[#f8f9fa] border-b border-[#f1f3f4] text-[9px] font-black uppercase tracking-[0.2em] text-[#5f6368]">
-                    <tr>
-                      <th className="px-8 py-5">Instance Name</th>
-                      <th className="px-4 py-5 text-center">CPU %</th>
-                      <th className="px-4 py-5 text-center">RAM Used</th>
-                      <th className="px-4 py-5">Status</th>
-                      <th className="px-8 py-5 text-right">Ops</th>
-                    </tr>
-                   </thead>
-                   <tbody className="divide-y divide-[#f1f3f4]">
-                    {projects.map((p: any) => (
-                      <tr key={p.name} className="hover:bg-[#fcfdfe] transition-colors group">
-                        <td className="px-8 py-6 font-extrabold text-[#1a73e8] text-[15px]">{p.name}</td>
-                        <td className="px-4 py-6 text-center text-[10px] font-black">{p.cpu}%</td>
-                        <td className="px-4 py-6 text-center font-black text-[11px]">{Math.round(p.memory / (1024*1024))} MB</td>
-                        <td className="px-4 py-6">
-                           <span className={`flex items-center gap-2 text-[10px] font-black uppercase ${p.status === 'online' ? 'text-[#34a853]' : 'text-[#ea4335]'}`}>
-                             <div className={`w-2 h-2 rounded-full ${p.status === 'online' ? 'bg-[#34a853] shadow-[0_0_10px_#34a853]' : 'bg-[#ea4335]'}`}></div>
-                             {p.status}
-                           </span>
-                        </td>
-                        <td className="px-8 py-6 text-right">
-                           <div className="flex justify-end gap-2">
-                              {p.status === 'online' ? (
-                                <button onClick={() => handleAction(p.name, 'stop')} className="p-2.5 bg-[#f8f9fa] hover:bg-[#202124] hover:text-white rounded-[16px] transition-all"><Square className="w-3.5 h-3.5 fill-current" /></button>
-                              ) : (
-                                <button onClick={() => handleAction(p.name, 'start')} className="p-2.5 bg-[#f8f9fa] hover:bg-[#34a853] hover:text-white rounded-[16px] transition-all"><Play className="w-3.5 h-3.5 fill-current" /></button>
-                              )}
-                              <button onClick={() => handleAction(p.name, 'restart')} className="p-2.5 bg-[#f8f9fa] hover:bg-[#1a73e8] hover:text-white rounded-[16px] transition-all"><RotateCcw className="w-3.5 h-3.5" /></button>
-                              <button onClick={() => handleAction(p.name, 'delete')} className="p-2.5 bg-[#f8f9fa] hover:bg-[#ea4335] hover:text-white rounded-[16px] transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
-                           </div>
-                        </td>
-                      </tr>
-                    ))}
-                   </tbody>
-                </table>
+                {projects.length === 0 ? (
+                  <div className="text-center py-16">
+                    <Box className="w-12 h-12 text-[#dadce0] mx-auto mb-4" />
+                    <p className="text-[14px] font-black text-[#9aa0a6]">No workloads running</p>
+                    <p className="text-[11px] font-bold text-[#dadce0] mt-1">Deploy a project from the Operations Hub</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-left">
+                    <thead className="bg-[#f8f9fa] border-b border-[#f1f3f4] text-[9px] font-black uppercase tracking-[0.2em] text-[#5f6368]">
+                     <tr>
+                       <th className="px-8 py-5">Instance</th>
+                       <th className="px-4 py-5 text-center">Port</th>
+                       <th className="px-4 py-5 text-center">CPU</th>
+                       <th className="px-4 py-5 text-center">RAM</th>
+                       <th className="px-4 py-5">Status</th>
+                       <th className="px-8 py-5 text-right">Actions</th>
+                     </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#f1f3f4]">
+                     {projects.map((p: any) => (
+                       <tr key={p.name} className="hover:bg-[#fcfdfe] transition-colors group">
+                         <td className="px-8 py-5">
+                           <button onClick={() => setSelectedProject(p.name)} className="text-left hover:text-[#1a73e8] transition-colors">
+                             <div className="text-[14px] font-extrabold text-[#1a73e8]">{p.name}</div>
+                             <div className="text-[9px] font-bold text-[#5f6368] uppercase tracking-widest">{p.stack || 'NODEJS'}</div>
+                           </button>
+                         </td>
+                         <td className="px-4 py-5 text-center">
+                           <span className="text-[11px] font-black text-[#202124] bg-[#f8f9fa] px-2 py-1 rounded-lg">:{p.port}</span>
+                         </td>
+                         <td className="px-4 py-5 text-center text-[11px] font-black">{p.cpu}%</td>
+                         <td className="px-4 py-5 text-center font-black text-[11px]">{Math.round(p.memory / (1024*1024))} MB</td>
+                         <td className="px-4 py-5">
+                            <span className={`flex items-center gap-2 text-[10px] font-black uppercase ${p.status === 'online' ? 'text-[#34a853]' : 'text-[#ea4335]'}`}>
+                              <div className={`w-2 h-2 rounded-full ${p.status === 'online' ? 'bg-[#34a853] shadow-[0_0_10px_#34a853]' : 'bg-[#ea4335]'}`}></div>
+                              {p.status}
+                            </span>
+                         </td>
+                         <td className="px-8 py-5 text-right">
+                            <div className="flex justify-end gap-2">
+                               {/* Update */}
+                               <button onClick={() => handleUpdate(p.name)} className="p-2.5 bg-[#f8f9fa] hover:bg-[#1a73e8] hover:text-white rounded-[16px] transition-all" title="Pull & Restart">
+                                 <RefreshCcw className="w-3.5 h-3.5" />
+                               </button>
+                               {/* Start/Stop */}
+                               {p.status === 'online' ? (
+                                 <button onClick={() => handleAction(p.name, 'stop')} className="p-2.5 bg-[#f8f9fa] hover:bg-[#202124] hover:text-white rounded-[16px] transition-all" title="Stop"><Square className="w-3.5 h-3.5 fill-current" /></button>
+                               ) : (
+                                 <button onClick={() => handleAction(p.name, 'start')} className="p-2.5 bg-[#f8f9fa] hover:bg-[#34a853] hover:text-white rounded-[16px] transition-all" title="Start"><Play className="w-3.5 h-3.5 fill-current" /></button>
+                               )}
+                               {/* Restart */}
+                               <button onClick={() => handleAction(p.name, 'restart')} className="p-2.5 bg-[#f8f9fa] hover:bg-[#1a73e8] hover:text-white rounded-[16px] transition-all" title="Restart"><RotateCcw className="w-3.5 h-3.5" /></button>
+                               {/* Delete */}
+                               <button onClick={() => handleAction(p.name, 'delete')} className="p-2.5 bg-[#f8f9fa] hover:bg-[#ea4335] hover:text-white rounded-[16px] transition-all" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                            </div>
+                         </td>
+                       </tr>
+                     ))}
+                    </tbody>
+                  </table>
+                )}
              </div>
           </div>
         )}
 
+        {/* TAB: CLOUD SHELL */}
         {activeTab === 'shell' && (
-          <div className="flex-1 p-8 flex flex-col bg-[#0f1115] animate-in slide-in-from-bottom-4 duration-500">
+          <div className="flex-1 p-8 flex flex-col bg-[#0f1115]">
              <header className="mb-6 flex justify-between items-center text-white">
                 <h1 className="text-xl font-bold tracking-tight flex items-center gap-3">
                   <TerminalIcon className="text-[#1a73e8]" /> End-to-End Shell
@@ -451,7 +601,94 @@ function App() {
           </div>
         )}
       </main>
+
+      {/* ─── Modals & Overlays ──────────────────────────────────────────────── */}
+
+      {/* Deploy Progress Modal */}
+      <DeployModal
+        isOpen={showDeployModal}
+        onClose={onDeployModalClose}
+        wsUrl={WS_URL}
+        onDeployComplete={fetchData}
+        repoUrl={repoUrl}
+        branch={branch}
+      />
+
+      {/* Project Detail Slide-Over */}
+      <ProjectDetail
+        projectName={selectedProject}
+        onClose={() => setSelectedProject(null)}
+        onAction={handleAction}
+      />
+
+      {/* Delete Confirmation */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-6">
+          <div className="bg-white rounded-[32px] p-8 max-w-md w-full shadow-2xl">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-14 h-14 bg-[#fde9e9] rounded-[20px] flex items-center justify-center">
+                <AlertTriangle className="w-7 h-7 text-[#ea4335]" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-[#202124]">Delete Instance?</h3>
+                <p className="text-[12px] font-bold text-[#5f6368]">This will remove <strong>{deleteConfirm}</strong> and its files.</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-4 rounded-[20px] font-black text-sm text-[#5f6368] bg-[#f8f9fa] hover:bg-[#f1f3f4] transition-all">
+                Cancel
+              </button>
+              <button onClick={confirmDelete} className="flex-1 py-4 rounded-[20px] font-black text-sm text-white bg-[#ea4335] shadow-lg shadow-[#ea4335]/20 hover:bg-[#d33] transition-all active:scale-95">
+                Delete Forever
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Update Confirmation Popup */}
+      {showUpdateConfirm && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-6">
+          <div className="bg-white rounded-[32px] p-8 max-w-md w-full shadow-2xl animate-[scaleIn_0.2s_ease-out]">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-14 h-14 bg-gradient-to-br from-[#fbbc04] to-[#f9ab00] rounded-[20px] flex items-center justify-center shadow-lg shadow-[#fbbc04]/30">
+                <Download className="w-7 h-7 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-[#202124]">Update Panel?</h3>
+                <p className="text-[12px] font-bold text-[#5f6368]">This will pull latest code from GitHub, reinstall deps, and reload the panel.</p>
+              </div>
+            </div>
+            <div className="bg-[#f8f9fa] rounded-[20px] p-4 mb-6 border border-[#f1f3f4]">
+              <p className="text-[10px] font-black text-[#5f6368] uppercase tracking-widest">What happens:</p>
+              <ul className="mt-2 space-y-1.5 text-[11px] font-bold text-[#202124]">
+                <li className="flex items-center gap-2"><div className="w-1 h-1 bg-[#1a73e8] rounded-full"></div> git pull origin master</li>
+                <li className="flex items-center gap-2"><div className="w-1 h-1 bg-[#1a73e8] rounded-full"></div> npm install (backend)</li>
+                <li className="flex items-center gap-2"><div className="w-1 h-1 bg-[#1a73e8] rounded-full"></div> PM2 reload aquos-panel</li>
+                <li className="flex items-center gap-2"><div className="w-1 h-1 bg-[#34a853] rounded-full"></div> Page auto-refreshes in ~15s</li>
+              </ul>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setShowUpdateConfirm(false)} disabled={isUpdating} className="flex-1 py-4 rounded-[20px] font-black text-sm text-[#5f6368] bg-[#f8f9fa] hover:bg-[#f1f3f4] transition-all disabled:opacity-50">
+                Cancel
+              </button>
+              <button onClick={handlePanelUpdate} disabled={isUpdating} className="flex-1 py-4 rounded-[20px] font-black text-sm text-white bg-gradient-to-r from-[#fbbc04] to-[#f9ab00] shadow-lg shadow-[#fbbc04]/20 hover:brightness-110 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70">
+                {isUpdating ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                {isUpdating ? 'Updating...' : 'Update Now'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function App() {
+  return (
+    <ToastProvider>
+      <AppContent />
+    </ToastProvider>
   );
 }
 

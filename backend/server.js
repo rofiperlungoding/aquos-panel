@@ -46,7 +46,8 @@ if (!fs.existsSync(PROJECTS_DIR)) {
     fs.mkdirSync(PROJECTS_DIR, { recursive: true });
 }
 
-// Auth API
+// ─── Auth API ───────────────────────────────────────────────────────────────
+
 app.post('/api/login', (req, res) => {
     const { password } = req.body;
     if (password === PANEL_PASSWORD) {
@@ -57,7 +58,8 @@ app.post('/api/login', (req, res) => {
     }
 });
 
-// Protected REST APIs
+// ─── System Stats ───────────────────────────────────────────────────────────
+
 app.get('/api/stats', authenticateToken, async (req, res) => {
     try {
         const stats = await systemStats.getStats();
@@ -66,6 +68,8 @@ app.get('/api/stats', authenticateToken, async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+// ─── Projects CRUD ──────────────────────────────────────────────────────────
 
 app.get('/api/projects', authenticateToken, async (req, res) => {
     try {
@@ -76,8 +80,11 @@ app.get('/api/projects', authenticateToken, async (req, res) => {
     }
 });
 
+// Deploy new project
 app.post('/api/projects', authenticateToken, async (req, res) => {
     const { repoUrl, branch = 'main', envVars = {} } = req.body;
+    if (!repoUrl) return res.status(400).json({ error: 'repoUrl is required' });
+
     try {
         const result = await pm2Manager.deployProject(repoUrl, branch, envVars, PROJECTS_DIR);
         res.json(result);
@@ -86,9 +93,31 @@ app.post('/api/projects', authenticateToken, async (req, res) => {
     }
 });
 
+// Project detail
+app.get('/api/projects/:name', authenticateToken, async (req, res) => {
+    try {
+        const detail = await pm2Manager.getProjectDetail(req.params.name);
+        res.json(detail);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Project logs
+app.get('/api/projects/:name/logs', authenticateToken, async (req, res) => {
+    try {
+        const lines = parseInt(req.query.lines) || 100;
+        const logs = await pm2Manager.getProjectLogs(req.params.name, lines);
+        res.json(logs);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Project actions (start/stop/restart/delete)
 app.post('/api/projects/:name/action', authenticateToken, async (req, res) => {
     const { name } = req.params;
-    const { action } = req.body; // start, stop, restart, delete
+    const { action } = req.body;
     try {
         const result = await pm2Manager.executeAction(name, action, PROJECTS_DIR);
         res.json({ success: true, result });
@@ -97,7 +126,29 @@ app.post('/api/projects/:name/action', authenticateToken, async (req, res) => {
     }
 });
 
-// Auto Updater APIs
+// Update project (git pull + reinstall + restart)
+app.post('/api/projects/:name/update', authenticateToken, async (req, res) => {
+    try {
+        const result = await pm2Manager.updateProject(req.params.name);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Update env vars
+app.post('/api/projects/:name/env', authenticateToken, async (req, res) => {
+    const { envVars } = req.body;
+    try {
+        const result = await pm2Manager.updateEnvVars(req.params.name, envVars || {});
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Auto Updater APIs ──────────────────────────────────────────────────────
+
 const util = require('util');
 const { exec } = require('child_process');
 const execPromise = util.promisify(exec);
@@ -131,7 +182,19 @@ app.post('/api/system/update', async (req, res) => {
     }, 1000);
 });
 
-// WebSocket for Terminal & Logs
+// ─── SPA Fallback (must be after all /api routes) ───────────────────────────
+
+app.get('*', (req, res) => {
+    const indexPath = path.join(__dirname, '../frontend/dist/index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).json({ error: 'Frontend not built. Run: cd frontend && npm run build' });
+    }
+});
+
+// ─── WebSocket for Terminal, Logs & Deploy Progress ─────────────────────────
+
 wss.on('connection', (ws, req) => {
     const urlParams = new URLSearchParams(req.url.split('?')[1]);
     const type = urlParams.get('type') || 'terminal';
@@ -177,10 +240,68 @@ wss.on('connection', (ws, req) => {
         ws.on('close', () => {
             ptyProcess.kill();
         });
+
+    } else if (type === 'deploy') {
+        // Stream deploy progress events to the client
+        const handler = (progress) => {
+            if (ws.readyState === 1) { // OPEN
+                ws.send(JSON.stringify({ type: 'deploy-progress', ...progress }));
+            }
+        };
+        pm2Manager.deployEmitter.on('progress', handler);
+
+        ws.on('close', () => {
+            pm2Manager.deployEmitter.removeListener('progress', handler);
+        });
+
     } else if (type === 'logs') {
-        // Will stream PM2 logs for a specific project
+        // Stream PM2 logs for a specific project
         const projectName = urlParams.get('project');
-        // Logic to stream file logs using tail...
+        if (!projectName) {
+            ws.close(1008, 'Project name required');
+            return;
+        }
+
+        // Tail log files and stream
+        const homedir = os.homedir();
+        const outLog = path.join(homedir, '.pm2', 'logs', `${projectName}-out.log`);
+        const errLog = path.join(homedir, '.pm2', 'logs', `${projectName}-error.log`);
+
+        let watchers = [];
+
+        const streamFile = (filePath, logType) => {
+            if (!fs.existsSync(filePath)) return;
+            
+            // Send last 50 lines initially
+            try {
+                const content = fs.readFileSync(filePath, 'utf8');
+                const lines = content.split('\n').slice(-50).join('\n');
+                if (lines.trim()) {
+                    ws.send(JSON.stringify({ type: 'log-data', logType, data: lines }));
+                }
+            } catch (e) { /* ignore */ }
+
+            // Watch for changes
+            try {
+                const watcher = fs.watch(filePath, () => {
+                    try {
+                        const content = fs.readFileSync(filePath, 'utf8');
+                        const lines = content.split('\n').slice(-5).join('\n');
+                        if (ws.readyState === 1) {
+                            ws.send(JSON.stringify({ type: 'log-data', logType, data: lines }));
+                        }
+                    } catch (e) { /* ignore */ }
+                });
+                watchers.push(watcher);
+            } catch (e) { /* ignore */ }
+        };
+
+        streamFile(outLog, 'stdout');
+        streamFile(errLog, 'stderr');
+
+        ws.on('close', () => {
+            watchers.forEach(w => w.close());
+        });
     }
 });
 
