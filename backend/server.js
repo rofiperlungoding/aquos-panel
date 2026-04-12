@@ -34,7 +34,7 @@ function authenticateToken(req, res, next) {
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../frontend/dist')));
+app.use(express.static(path.join(__dirname, '../frontend/dist'), { setHeaders: (res, path) => { if (path.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache'); } }));
 
 
 // Init PM2 connection
@@ -172,11 +172,11 @@ app.get('/api/system/check-update', async (req, res) => {
 app.post('/api/system/update', async (req, res) => {
     res.json({ message: 'Update initiated' });
     setTimeout(() => {
-        // Run from repo root so git pull works
-        exec('git pull origin master && pm2 restart aquos-panel', 
+        // Force sync with GitHub (ignoring local uncommitted changes to UI/Server) and restart via npx
+        exec('git fetch origin master && git reset --hard origin/master && npx pm2 restart aquos-panel', 
             { cwd: REPO_ROOT },
-            (err) => {
-                if (err) console.error('Update restart failed', err);
+            (err, stdout, stderr) => {
+                if (err) console.error('Update restart failed', err, stderr);
             }
         );
     }, 1000);
