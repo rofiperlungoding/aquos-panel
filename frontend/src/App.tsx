@@ -665,20 +665,21 @@ function AppContent() {
 
         {/* TAB: CLOUD SHELL */}
         {activeTab === 'shell' && (
-          <div className="flex-1 p-8 flex flex-col bg-[#0f1115]">
-             <header className="mb-6 flex justify-between items-center text-white border-b border-white/5 pb-6">
-                <div>
-                  <h1 className="text-xl font-black tracking-tight flex items-center gap-3">
-                    <TerminalIcon className="text-[#1a73e8]" /> Live Cloud Shell
-                  </h1>
-                  <p className="text-[10px] text-[#9aa0a6] font-bold uppercase tracking-widest mt-1">Real-time Encrypted Bridge</p>
+          <div className="flex-1 flex flex-col bg-[#0f1115] overflow-hidden">
+             {/* Compact Header */}
+             <div className="flex items-center justify-between px-6 py-3 border-b border-white/5 flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <TerminalIcon className="w-4 h-4 text-[#1a73e8]" />
+                  <span className="text-sm font-black text-white tracking-tight">Cloud Shell</span>
+                  <span className="text-[9px] font-bold text-[#555] uppercase tracking-widest">Real-time PTY Bridge</span>
                 </div>
-                <div className="text-[9px] font-black text-[#ea4335] flex items-center gap-2 bg-[#ea4335]/10 px-3 py-1.5 rounded-full uppercase">
-                  <div className="w-1.5 h-1.5 bg-[#ea4335] rounded-full animate-ping"></div>
-                  Wake-lock: Run 'termux-wake-lock' to prevent keep-alive issues
+                <div className="text-[9px] font-black text-[#ea4335] flex items-center gap-2 bg-[#ea4335]/10 px-2.5 py-1 rounded-full uppercase">
+                  <div className="w-1.5 h-1.5 bg-[#ea4335] rounded-full animate-ping" />
+                  termux-wake-lock recommended
                 </div>
-             </header>
-             <div className="flex-1 min-h-0 bg-black rounded-3xl overflow-hidden border border-white/5">
+             </div>
+             {/* Terminal fills remaining space */}
+             <div className="flex-1 min-h-0 overflow-hidden">
                 <TerminalView wsUrl={WS_URL} />
              </div>
           </div>
