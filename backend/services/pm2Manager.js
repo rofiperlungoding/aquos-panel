@@ -345,8 +345,17 @@ async function updateProject(name) {
 
 async function getProjectDetail(name) {
     const db = getDB();
-    const meta = db[name];
-    if (!meta) throw new Error(`Project "${name}" not found in registry.`);
+    const meta = db[name] || {
+        repoUrl: 'Unknown',
+        branch: 'N/A',
+        port: 'N/A',
+        stack: 'Unknown',
+        entryFile: 'N/A',
+        envVars: {},
+        deployedAt: 'N/A',
+        lastUpdated: 'N/A',
+        serverPath: process.cwd()
+    };
 
     // Get PM2 process info
     const pm2Info = await new Promise((resolve, reject) => {
@@ -356,28 +365,32 @@ async function getProjectDetail(name) {
         });
     });
 
-    // Get git info
+    // Get git info using projectRoot
     const projectRoot = meta.serverPath.endsWith(path.sep + 'server')
         ? path.dirname(meta.serverPath)
         : meta.serverPath;
 
     let gitInfo = {};
-    try {
-        const { stdout: branch } = await execPromise(`git -C "${projectRoot}" rev-parse --abbrev-ref HEAD`);
-        const { stdout: commitHash } = await execPromise(`git -C "${projectRoot}" rev-parse --short HEAD`);
-        const { stdout: commitMsg } = await execPromise(`git -C "${projectRoot}" log -1 --pretty=format:"%s"`);
-        const { stdout: commitDate } = await execPromise(`git -C "${projectRoot}" log -1 --pretty=format:"%ci"`);
+    if (meta.repoUrl !== 'Unknown') {
+        try {
+            const { stdout: branch } = await execPromise(`git -C "${projectRoot}" rev-parse --abbrev-ref HEAD`);
+            const { stdout: commitHash } = await execPromise(`git -C "${projectRoot}" rev-parse --short HEAD`);
+            const { stdout: commitMsg } = await execPromise(`git -C "${projectRoot}" log -1 --pretty=format:"%s"`);
+            const { stdout: commitDate } = await execPromise(`git -C "${projectRoot}" log -1 --pretty=format:"%ci"`);
 
-        gitInfo = {
-            branch: branch.trim(),
-            lastCommit: {
-                hash: commitHash.trim(),
-                message: commitMsg.trim(),
-                date: commitDate.trim()
-            }
-        };
-    } catch (e) {
-        gitInfo = { error: 'Could not read git info' };
+            gitInfo = {
+                branch: branch.trim(),
+                lastCommit: {
+                    hash: commitHash.trim(),
+                    message: commitMsg.trim(),
+                    date: commitDate.trim()
+                }
+            };
+        } catch (e) {
+            gitInfo = { error: 'Could not read git info' };
+        }
+    } else {
+        gitInfo = { error: 'Not managed by panel deployer' };
     }
 
     // Get folder size
