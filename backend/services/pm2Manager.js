@@ -2,6 +2,7 @@ const pm2 = require('pm2');
 const fs = require('fs');
 const path = require('path');
 const util = require('util');
+const os = require('os');
 const { exec } = require('child_process');
 const execPromise = util.promisify((cmd, opts = {}, cb) => {
     if (typeof opts === 'function') { cb = opts; opts = {}; }
@@ -55,6 +56,8 @@ function getNextPort(db) {
 // ─── Stack Detection ────────────────────────────────────────────────────────
 
 function detectEntryPoint(folderPath) {
+    if (!folderPath || !fs.existsSync(folderPath)) return null;
+
     // Node.js detection
     const pkgPath = path.join(folderPath, 'package.json');
     if (fs.existsSync(pkgPath)) {
@@ -118,6 +121,37 @@ function detectEntryPoint(folderPath) {
     return null; // Can't detect
 }
 
+// ─── Detect stack from PM2 process info ─────────────────────────────────────
+
+function detectStackFromPM2(pm2Env) {
+    if (!pm2Env) return 'Unknown';
+    const interpreter = pm2Env.exec_interpreter || '';
+    const script = pm2Env.pm_exec_path || '';
+    
+    if (interpreter.includes('node') || script.endsWith('.js') || script.endsWith('.mjs')) return 'Node.js';
+    if (interpreter.includes('python')) return 'Python';
+    if (interpreter === 'none' && (script.endsWith('.sh') || script.includes('bash'))) return 'Shell';
+    if (interpreter === 'none') return 'Binary';
+    return 'Unknown';
+}
+
+// ─── Detect port from PM2 process env ───────────────────────────────────────
+
+function detectPortFromPM2(pm2Env) {
+    if (!pm2Env) return null;
+    // Check env vars in priority order
+    const envObj = pm2Env.env || {};
+    if (envObj.PORT) return parseInt(envObj.PORT);
+    if (pm2Env.PORT) return parseInt(pm2Env.PORT);
+    // Check args for --port or -p
+    const args = pm2Env.args || [];
+    if (typeof args === 'string') {
+        const portMatch = args.match(/(?:--port|-p)\s*(\d+)/);
+        if (portMatch) return parseInt(portMatch[1]);
+    }
+    return null;
+}
+
 // ─── List Projects ──────────────────────────────────────────────────────────
 
 function listProjects() {
@@ -128,19 +162,25 @@ function listProjects() {
 
             const projects = list.map(app => {
                 const name = app.name;
-                const meta = db[name] || {};
+                const meta = db[name];
+                const pm2Env = app.pm2_env || {};
+                
+                // For manually-started apps, auto-detect what we can
+                const port = (meta && meta.port) || detectPortFromPM2(pm2Env) || null;
+                const stack = (meta && meta.stack) || detectStackFromPM2(pm2Env);
+
                 return {
                     name,
-                    status: app.pm2_env.status,
-                    uptime: app.pm2_env.pm_uptime,
-                    memory: app.monit.memory,
-                    cpu: app.monit.cpu,
-                    port: meta.port,
-                    stack: meta.stack,
-                    repoUrl: meta.repoUrl,
-                    branch: meta.branch || 'main',
-                    deployedAt: meta.deployedAt,
-                    lastUpdated: meta.lastUpdated
+                    status: pm2Env.status,
+                    uptime: pm2Env.pm_uptime,
+                    memory: app.monit ? app.monit.memory : 0,
+                    cpu: app.monit ? app.monit.cpu : 0,
+                    port,
+                    stack,
+                    repoUrl: meta ? meta.repoUrl : null,
+                    branch: (meta && meta.branch) || null,
+                    deployedAt: meta ? meta.deployedAt : null,
+                    lastUpdated: meta ? meta.lastUpdated : null
                 };
             });
             resolve(projects);
@@ -304,22 +344,58 @@ async function deployProject(repoUrl, branch = 'main', envVars = {}, projectsDir
 async function updateProject(name) {
     const db = getDB();
     const meta = db[name];
-    if (!meta) throw new Error(`Project "${name}" not found in registry.`);
 
-    const serverPath = meta.serverPath;
-    // The project root is either serverPath or its parent (if server/ is used)
-    const projectRoot = serverPath.endsWith(path.sep + 'server')
-        ? path.dirname(serverPath)
-        : serverPath;
+    // For manually-started PM2 apps (not in our registry),
+    // get path from PM2 directly and do git pull + restart
+    let workingDir = null;
+    let projectRoot = null;
+    let branch = 'main';
 
-    // 1. Git pull
-    const branch = meta.branch || 'main';
-    await execPromise(`git -C "${projectRoot}" pull origin ${branch}`);
+    if (meta) {
+        workingDir = meta.serverPath;
+        branch = meta.branch || 'main';
+    } else {
+        // Get from PM2
+        const pm2Info = await new Promise((resolve) => {
+            pm2.describe(name, (err, desc) => {
+                if (err || !desc || !desc[0]) return resolve(null);
+                resolve(desc[0]);
+            });
+        });
+        if (!pm2Info) throw new Error(`Process "${name}" not found.`);
+        workingDir = pm2Info.pm2_env?.pm_cwd || null;
+        if (!workingDir) throw new Error(`Cannot determine working directory for "${name}".`);
+    }
+
+    // The project root is either workingDir or its parent (if server/ is used)
+    projectRoot = workingDir;
+    if (workingDir.endsWith(path.sep + 'server')) {
+        projectRoot = path.dirname(workingDir);
+    }
+
+    // 1. Git pull (non-fatal if not a git repo)
+    try {
+        // Detect branch from git if not in registry
+        if (!meta) {
+            try {
+                const { stdout: branchOut } = await execPromise(`git -C "${projectRoot}" rev-parse --abbrev-ref HEAD`, { timeout: 3000 });
+                branch = branchOut.trim() || 'main';
+            } catch (e) { /* use default */ }
+        }
+        await execPromise(`git -C "${projectRoot}" pull origin ${branch}`, { timeout: 15000 });
+    } catch (e) {
+        console.error(`Git pull failed for ${name}:`, e.message);
+        // Continue anyway — maybe not a git repo, just restart
+    }
 
     // 2. Reinstall deps
-    const detection = detectEntryPoint(serverPath);
+    const detection = detectEntryPoint(workingDir);
     if (detection && detection.installCmd) {
-        await execPromise(detection.installCmd, { cwd: serverPath });
+        try {
+            await execPromise(detection.installCmd, { cwd: workingDir, timeout: 30000 });
+        } catch (e) {
+            console.error(`Install failed for ${name}:`, e.message);
+        }
     }
 
     // 3. Restart PM2 process
@@ -330,15 +406,18 @@ async function updateProject(name) {
         });
     });
 
-    // 4. Update metadata
-    meta.lastUpdated = new Date().toISOString();
-    if (detection) {
-        meta.stack = detection.stack;
-        meta.entryFile = detection.entryFile || null;
+    // 4. Update metadata (only if in registry)
+    const now = new Date().toISOString();
+    if (meta) {
+        meta.lastUpdated = now;
+        if (detection) {
+            meta.stack = detection.stack;
+            meta.entryFile = detection.entryFile || null;
+        }
+        saveDB(db);
     }
-    saveDB(db);
 
-    return { success: true, name, lastUpdated: meta.lastUpdated };
+    return { success: true, name, lastUpdated: now };
 }
 
 // ─── Get Project Detail ─────────────────────────────────────────────────────
@@ -357,7 +436,7 @@ async function getProjectDetail(name) {
             name,
             repoUrl: 'N/A',
             branch: 'N/A',
-            port: 'N/A',
+            port: null,
             stack: 'Unknown',
             entryFile: 'N/A',
             envVars: {},
@@ -379,7 +458,7 @@ async function _getProjectDetailInner(name) {
     // Step 1: Get PM2 process info FIRST (we need pm_cwd)
     let pm2Info = null;
     try {
-        pm2Info = await new Promise((resolve, reject) => {
+        pm2Info = await new Promise((resolve) => {
             pm2.describe(name, (err, desc) => {
                 if (err) return resolve(null);
                 resolve(desc && desc[0] ? desc[0] : null);
@@ -387,31 +466,76 @@ async function _getProjectDetailInner(name) {
         });
     } catch (e) { pm2Info = null; }
 
+    const pm2Env = pm2Info ? pm2Info.pm2_env : null;
+
     // Step 2: Determine working directory
-    // For panel-deployed apps: use meta.serverPath
-    // For manually-started PM2 apps: use pm2's pm_cwd
     let workingDir;
     if (isManaged && meta.serverPath) {
         workingDir = meta.serverPath;
-    } else if (pm2Info && pm2Info.pm2_env && pm2Info.pm2_env.pm_cwd) {
-        workingDir = pm2Info.pm2_env.pm_cwd;
+    } else if (pm2Env && pm2Env.pm_cwd) {
+        workingDir = pm2Env.pm_cwd;
     } else {
         workingDir = null;
     }
 
-    // Step 3: Determine project root (for git — go up if in server/ subfolder)
+    // Step 3: Auto-detect port & stack for unmanaged processes
+    const port = (isManaged && meta.port) || detectPortFromPM2(pm2Env) || null;
+    const stack = (isManaged && meta.stack) || detectStackFromPM2(pm2Env);
+    
+    // Step 4: Try to detect entry file
+    let entryFile = (isManaged && meta.entryFile) || null;
+    if (!entryFile && pm2Env) {
+        // Get from PM2 exec path
+        const execPath = pm2Env.pm_exec_path || '';
+        if (execPath && workingDir) {
+            entryFile = path.relative(workingDir, execPath) || path.basename(execPath);
+        } else {
+            entryFile = path.basename(execPath) || 'N/A';
+        }
+    }
+
+    // Step 5: Get env vars (from registry or PM2)
+    let envVars = {};
+    if (isManaged) {
+        envVars = meta.envVars || {};
+    } else if (pm2Env && pm2Env.env) {
+        // Extract user-set env vars (filter out system ones)
+        const systemKeys = new Set(['PATH', 'HOME', 'SHELL', 'USER', 'TERM', 'LANG', 'LOGNAME',
+            'HOSTNAME', 'PWD', 'OLDPWD', 'SHLVL', '_', 'LS_COLORS', 'MAIL',
+            'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS', 'SSH_AUTH_SOCK',
+            'SSH_AGENT_PID', 'DISPLAY', 'COLORTERM', 'TERM_PROGRAM',
+            'NODE_ENV', 'unique_id', 'PM2_HOME', 'PM2_INTERACTOR_PROCESSING',
+            'PM2_USAGE', 'km_link', 'pm_id', 'status', 'unstable_restarts',
+            'restart_time', 'pm_uptime', 'created_at', 'axm_dynamic',
+            'axm_options', 'axm_monitor', 'axm_actions',
+            'USERNAME', 'USERDOMAIN', 'ALLUSERSPROFILE', 'APPDATA',
+            'CommonProgramFiles', 'COMPUTERNAME', 'ComSpec', 'DriverData',
+            'HOMEDRIVE', 'HOMEPATH', 'LOCALAPPDATA', 'NUMBER_OF_PROCESSORS',
+            'OS', 'PATHEXT', 'PROCESSOR_ARCHITECTURE', 'PROCESSOR_IDENTIFIER',
+            'PROCESSOR_LEVEL', 'PROCESSOR_REVISION', 'ProgramData',
+            'ProgramFiles', 'PSModulePath', 'PUBLIC', 'SystemDrive',
+            'SystemRoot', 'TEMP', 'TMP', 'USERPROFILE', 'windir',
+            'ANDROID_DATA', 'ANDROID_ROOT', 'PREFIX', 'TMPDIR']);
+        for (const [k, v] of Object.entries(pm2Env.env)) {
+            if (!systemKeys.has(k) && typeof v === 'string') {
+                envVars[k] = v;
+            }
+        }
+    }
+
+    // Step 6: Project root for git (go up if in server/ subfolder)
     let projectRoot = workingDir;
     if (workingDir && workingDir.endsWith(path.sep + 'server')) {
         projectRoot = path.dirname(workingDir);
     }
 
-    // Step 4: Parallel data fetch (git + disk size) — only if we have a path
+    // Step 7: Parallel data fetch (git + disk size) — only if we have a path
     let gitInfo = { error: 'No working directory found' };
     let diskSize = 'unknown';
 
     if (projectRoot) {
         const results = await Promise.allSettled([
-            // Git info (single batched command)
+            // Git info
             (async () => {
                 try {
                     const { stdout: check } = await execPromise(
@@ -430,14 +554,14 @@ async function _getProjectDetailInner(name) {
                     const msg = parts[2] || '';
                     const date = parts[3] || '';
 
-                    let branch = 'main';
+                    let gitBranch = 'main';
                     if (branchRaw.includes('->')) {
-                        branch = branchRaw.split('->')[1].split(',')[0].trim();
+                        gitBranch = branchRaw.split('->')[1].split(',')[0].trim();
                     } else if (branchRaw.trim()) {
-                        branch = branchRaw.trim();
+                        gitBranch = branchRaw.trim();
                     }
 
-                    return { branch, lastCommit: { hash, message: msg, date }, isGit: true };
+                    return { branch: gitBranch, lastCommit: { hash, message: msg, date }, isGit: true };
                 } catch (e) { return { isGit: false }; }
             })(),
 
@@ -466,23 +590,23 @@ async function _getProjectDetailInner(name) {
 
     return {
         name,
-        repoUrl: (meta && meta.repoUrl !== 'Unknown') ? meta.repoUrl : (gitInfo.branch ? 'Local Git' : 'N/A'),
-        branch: gitInfo.branch || (meta && meta.branch) || 'N/A',
-        port: (meta && meta.port) || 'N/A',
-        stack: (meta && meta.stack) || 'Unknown',
-        entryFile: (meta && meta.entryFile) || 'N/A',
-        envVars: (meta && meta.envVars) || {},
-        deployedAt: meta ? meta.deployedAt : null,
-        lastUpdated: meta ? meta.lastUpdated : null,
+        repoUrl: (isManaged && meta.repoUrl && meta.repoUrl !== 'Unknown') ? meta.repoUrl : (gitInfo.branch ? 'Local Git' : 'N/A'),
+        branch: gitInfo.branch || (isManaged && meta.branch) || 'N/A',
+        port,
+        stack,
+        entryFile: entryFile || 'N/A',
+        envVars,
+        deployedAt: isManaged ? meta.deployedAt : null,
+        lastUpdated: isManaged ? meta.lastUpdated : null,
         serverPath: workingDir || 'N/A',
         diskSize,
         git: gitInfo,
         process: pm2Info ? {
-            status: pm2Info.pm2_env.status,
-            uptime: pm2Info.pm2_env.pm_uptime,
-            restarts: pm2Info.pm2_env.restart_time,
-            memory: pm2Info.monit.memory,
-            cpu: pm2Info.monit.cpu
+            status: pm2Env.status,
+            uptime: pm2Env.pm_uptime,
+            restarts: pm2Env.restart_time,
+            memory: pm2Info.monit ? pm2Info.monit.memory : 0,
+            cpu: pm2Info.monit ? pm2Info.monit.cpu : 0
         } : null
     };
 }
@@ -491,39 +615,93 @@ async function _getProjectDetailInner(name) {
 
 async function getProjectLogs(name, lines = 100) {
     // PM2 stores logs in ~/.pm2/logs/
-    const homedir = require('os').homedir();
+    const homedir = os.homedir();
     const outLog = path.join(homedir, '.pm2', 'logs', `${name}-out.log`);
     const errLog = path.join(homedir, '.pm2', 'logs', `${name}-error.log`);
 
     let output = '';
     let errors = '';
 
+    // Check if files exist and read them
     try {
         if (fs.existsSync(outLog)) {
-            const { stdout } = await execPromise(`tail -n ${lines} "${outLog}"`);
-            output = stdout;
+            const { stdout } = await execPromise(`tail -n ${lines} "${outLog}"`, { timeout: 3000 });
+            output = stdout || '';
         }
-    } catch (e) { output = '(no output logs)'; }
+    } catch (e) { output = ''; }
 
     try {
         if (fs.existsSync(errLog)) {
-            const { stdout } = await execPromise(`tail -n ${lines} "${errLog}"`);
-            errors = stdout;
+            const { stdout } = await execPromise(`tail -n ${lines} "${errLog}"`, { timeout: 3000 });
+            errors = stdout || '';
         }
-    } catch (e) { errors = '(no error logs)'; }
+    } catch (e) { errors = ''; }
 
-    return { stdout: output, stderr: errors };
+    // If no log files found, try to get from PM2 describe
+    if (!output && !errors) {
+        try {
+            const info = await new Promise((resolve) => {
+                pm2.describe(name, (err, desc) => {
+                    if (err || !desc || !desc[0]) return resolve(null);
+                    resolve(desc[0]);
+                });
+            });
+            if (info && info.pm2_env) {
+                const altOut = info.pm2_env.pm_out_log_path;
+                const altErr = info.pm2_env.pm_err_log_path;
+                if (altOut && fs.existsSync(altOut)) {
+                    try {
+                        const { stdout } = await execPromise(`tail -n ${lines} "${altOut}"`, { timeout: 3000 });
+                        output = stdout || '';
+                    } catch (e) {}
+                }
+                if (altErr && fs.existsSync(altErr)) {
+                    try {
+                        const { stdout } = await execPromise(`tail -n ${lines} "${altErr}"`, { timeout: 3000 });
+                        errors = stdout || '';
+                    } catch (e) {}
+                }
+            }
+        } catch (e) {}
+    }
+
+    return { stdout: output || '(no output)', stderr: errors || '' };
 }
 
 // ─── Update Env Vars ────────────────────────────────────────────────────────
 
 async function updateEnvVars(name, envVars) {
     const db = getDB();
-    const meta = db[name];
-    if (!meta) throw new Error(`Project "${name}" not found.`);
+    let meta = db[name];
+
+    // For unmanaged processes, create a registry entry on the fly
+    if (!meta) {
+        // Get path from PM2
+        const pm2Info = await new Promise((resolve) => {
+            pm2.describe(name, (err, desc) => {
+                if (err || !desc || !desc[0]) return resolve(null);
+                resolve(desc[0]);
+            });
+        });
+        if (!pm2Info) throw new Error(`Process "${name}" not found.`);
+
+        const pm2Env = pm2Info.pm2_env || {};
+        meta = {
+            repoUrl: 'Unknown',
+            branch: 'N/A',
+            port: detectPortFromPM2(pm2Env),
+            stack: detectStackFromPM2(pm2Env),
+            entryFile: pm2Env.pm_exec_path ? path.basename(pm2Env.pm_exec_path) : 'N/A',
+            serverPath: pm2Env.pm_cwd || null,
+            envVars: {},
+            deployedAt: null,
+            lastUpdated: null
+        };
+    }
 
     meta.envVars = envVars;
     meta.lastUpdated = new Date().toISOString();
+    db[name] = meta;
     saveDB(db);
 
     // Restart with new env

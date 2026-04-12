@@ -206,7 +206,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectName, onClose }) =
 
                   {/* Info Grid */}
                   <div className="grid grid-cols-2 gap-4">
-                    <InfoCard label="Port" value={`:${detail.port}`} icon={Globe} />
+                    <InfoCard label="Port" value={detail.port ? `:${detail.port}` : '—'} icon={Globe} />
                     <InfoCard label="Stack" value={detail.stack} icon={Code} />
                     <InfoCard label="Uptime" value={detail.process ? formatUptime(detail.process.uptime) : '—'} icon={Clock} />
                     <InfoCard label="Disk" value={detail.diskSize || '—'} icon={HardDrive} />
@@ -288,7 +288,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectName, onClose }) =
                   {/* PORT is always injected */}
                   <div className="flex items-center gap-3 bg-[#f8f9fa] p-3 rounded-[16px] border border-[#f1f3f4] opacity-60">
                     <input value="PORT" disabled className="flex-1 bg-transparent text-[12px] font-bold text-[#202124] outline-none" />
-                    <input value={detail.port} disabled className="flex-1 bg-transparent text-[12px] font-bold text-[#5f6368] outline-none" />
+                    <input value={detail.port || 'auto'} disabled className="flex-1 bg-transparent text-[12px] font-bold text-[#5f6368] outline-none" />
                     <div className="w-9" />
                   </div>
 
