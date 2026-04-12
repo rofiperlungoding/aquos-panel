@@ -189,7 +189,15 @@ app.get(/.*/, (req, res) => {
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
     } else {
-        res.status(404).json({ error: 'Frontend not built. Run: cd frontend && npm run build' });
+        // Pad the response so Chromium doesn't hijack the 404 page
+        const padding = ' '.repeat(1024);
+        res.status(404).json({ 
+            error: 'Frontend not built or path invalid.', 
+            pathChecked: indexPath,
+            cwd: process.cwd(),
+            __dirname: __dirname,
+            padding 
+        });
     }
 });
 
