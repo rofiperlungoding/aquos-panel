@@ -3,7 +3,12 @@ const express = require('express');
 const cors = require('cors');
 const http = require('http');
 const { WebSocketServer } = require('ws');
-const pty = require('node-pty');
+let pty;
+try {
+    pty = require('node-pty');
+} catch (e) {
+    console.error('node-pty not found or failed to load. Terminal will use fallback spawn.');
+}
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
@@ -226,31 +231,66 @@ wss.on('connection', (ws, req) => {
     }
 
     if (type === 'terminal') {
-        const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
+        const isWin = os.platform() === 'win32';
+        let shell = isWin ? 'powershell.exe' : 'bash';
         
-        const ptyProcess = pty.spawn(shell, [], {
-            name: 'xterm-color',
-            cols: parseInt(urlParams.get('cols') || 80),
-            rows: parseInt(urlParams.get('rows') || 24),
-            cwd: os.homedir(),
-            env: process.env
-        });
+        // Termux check
+        if (!isWin && fs.existsSync('/data/data/com.termux/files/usr/bin/bash')) {
+            shell = '/data/data/com.termux/files/usr/bin/bash';
+        }
 
-        ptyProcess.on('data', (data) => {
-            ws.send(JSON.stringify({ type: 'terminal-data', data }));
-        });
+        let ptyProcess = null;
+        try {
+            ptyProcess = pty.spawn(shell, isWin ? [] : ['-l'], { // Use login shell for bash
+                name: 'xterm-256color',
+                cols: parseInt(urlParams.get('cols') || 80),
+                rows: parseInt(urlParams.get('rows') || 24),
+                cwd: os.homedir(),
+                env: { ...process.env, TERM: 'xterm-256color' }
+            });
+
+            ptyProcess.on('data', (data) => {
+                if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal-data', data }));
+            });
+
+            ptyProcess.on('exit', () => {
+                if (ws.readyState === 1) ws.close();
+            });
+        } catch (err) {
+            console.error('PTY spawn failed, falling back to simple spawn:', err);
+            // Fallback to basic child_process if pty fails
+            const { spawn } = require('child_process');
+            const cp = spawn(shell, isWin ? [] : ['-i'], {
+                cwd: os.homedir(),
+                env: process.env,
+                shell: true
+            });
+
+            cp.stdout.on('data', (data) => ws.send(JSON.stringify({ type: 'terminal-data', data: data.toString() })));
+            cp.stderr.on('data', (data) => ws.send(JSON.stringify({ type: 'terminal-data', data: data.toString() })));
+            
+            ws.on('message', (msg) => {
+                const parsed = JSON.parse(msg);
+                if (parsed.type === 'terminal-input') cp.stdin.write(parsed.data);
+            });
+
+            ws.on('close', () => cp.kill());
+            return;
+        }
 
         ws.on('message', (msg) => {
-            const parsed = JSON.parse(msg);
-            if (parsed.type === 'terminal-input') {
-                ptyProcess.write(parsed.data);
-            } else if (parsed.type === 'resize') {
-                ptyProcess.resize(parsed.cols, parsed.rows);
-            }
+            try {
+                const parsed = JSON.parse(msg);
+                if (parsed.type === 'terminal-input' && ptyProcess) {
+                    ptyProcess.write(parsed.data);
+                } else if (parsed.type === 'resize' && ptyProcess) {
+                    ptyProcess.resize(parsed.cols, parsed.rows);
+                }
+            } catch (e) {}
         });
 
         ws.on('close', () => {
-            ptyProcess.kill();
+            if (ptyProcess) ptyProcess.kill();
         });
 
     } else if (type === 'deploy') {
