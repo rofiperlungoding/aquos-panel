@@ -344,102 +344,137 @@ async function updateProject(name) {
 // ─── Get Project Detail ─────────────────────────────────────────────────────
 
 async function getProjectDetail(name) {
+    // Master timeout: if anything takes >5s total, return partial data
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Detail fetch timeout')), 5000)
+    );
+
+    try {
+        return await Promise.race([timeoutPromise, _getProjectDetailInner(name)]);
+    } catch (e) {
+        // Return minimal data so frontend never hangs
+        return {
+            name,
+            repoUrl: 'N/A',
+            branch: 'N/A',
+            port: 'N/A',
+            stack: 'Unknown',
+            entryFile: 'N/A',
+            envVars: {},
+            deployedAt: null,
+            lastUpdated: null,
+            serverPath: 'N/A',
+            diskSize: 'unknown',
+            git: { error: e.message || 'Timeout fetching details' },
+            process: null
+        };
+    }
+}
+
+async function _getProjectDetailInner(name) {
     const db = getDB();
-    const meta = db[name] || {
-        repoUrl: 'Unknown',
-        branch: 'N/A',
-        port: 'N/A',
-        stack: 'Unknown',
-        entryFile: 'N/A',
-        envVars: {},
-        deployedAt: 'N/A',
-        lastUpdated: 'N/A',
-        serverPath: process.cwd()
-    };
+    const meta = db[name] || null;
+    const isManaged = !!meta; // true if deployed via panel
 
-    // Get PM2 process info
-    const pm2Info = await new Promise((resolve, reject) => {
-        pm2.describe(name, (err, desc) => {
-            if (err) return reject(err);
-            resolve(desc[0] || null);
+    // Step 1: Get PM2 process info FIRST (we need pm_cwd)
+    let pm2Info = null;
+    try {
+        pm2Info = await new Promise((resolve, reject) => {
+            pm2.describe(name, (err, desc) => {
+                if (err) return resolve(null);
+                resolve(desc && desc[0] ? desc[0] : null);
+            });
         });
-    });
+    } catch (e) { pm2Info = null; }
 
-    // Determine the working directory
-    // Priority: meta.serverPath > pm2Info.pm2_env.pm_cwd
-    const workingDir = meta.serverPath || pm2Info?.pm2_env?.pm_cwd || process.cwd();
+    // Step 2: Determine working directory
+    // For panel-deployed apps: use meta.serverPath
+    // For manually-started PM2 apps: use pm2's pm_cwd
+    let workingDir;
+    if (isManaged && meta.serverPath) {
+        workingDir = meta.serverPath;
+    } else if (pm2Info && pm2Info.pm2_env && pm2Info.pm2_env.pm_cwd) {
+        workingDir = pm2Info.pm2_env.pm_cwd;
+    } else {
+        workingDir = null;
+    }
 
-    // The project root is usually workingDir, but we check if it's a subfolder like 'server/'
+    // Step 3: Determine project root (for git — go up if in server/ subfolder)
     let projectRoot = workingDir;
-    if (workingDir.endsWith(path.sep + 'server')) {
+    if (workingDir && workingDir.endsWith(path.sep + 'server')) {
         projectRoot = path.dirname(workingDir);
     }
 
-    let gitInfo = {};
+    // Step 4: Parallel data fetch (git + disk size) — only if we have a path
+    let gitInfo = { error: 'No working directory found' };
     let diskSize = 'unknown';
 
-    // Run parallel tasks for speed
-    try {
-        const [gitData, duData] = await Promise.all([
-            // Task 1: Batched Git Info
+    if (projectRoot) {
+        const results = await Promise.allSettled([
+            // Git info (single batched command)
             (async () => {
                 try {
-                    // Check if git exists and it's a repo
-                    await execPromise(`git -C "${projectRoot}" rev-parse --is-inside-work-tree`, { timeout: 2000 });
-                    
-                    // Get multiple fields in ONE call: branch, hash, subject, author date
-                    const { stdout } = await execPromise(
-                        `git -C "${projectRoot}" log -1 --pretty=format:"%D|%h|%s|%ci"`, 
-                        { timeout: 3000 }
+                    const { stdout: check } = await execPromise(
+                        `git -C "${projectRoot}" rev-parse --is-inside-work-tree`,
+                        { timeout: 2000 }
                     );
-                    
-                    const [branchRaw, hash, msg, date] = stdout.trim().split('|');
-                    // Parse branch from "HEAD -> master, origin/master"
-                    const branch = branchRaw.includes('->') 
-                        ? branchRaw.split('->')[1].split(',')[0].trim()
-                        : branchRaw.trim() || 'main';
+                    if (!check.toString().trim().startsWith('true')) return { isGit: false };
 
-                    return {
-                        branch,
-                        lastCommit: { hash, message: msg, date },
-                        isGit: true
-                    };
+                    const { stdout } = await execPromise(
+                        `git -C "${projectRoot}" log -1 --pretty=format:"%D|%h|%s|%ci"`,
+                        { timeout: 2000 }
+                    );
+                    const parts = stdout.trim().split('|');
+                    const branchRaw = parts[0] || '';
+                    const hash = parts[1] || '';
+                    const msg = parts[2] || '';
+                    const date = parts[3] || '';
+
+                    let branch = 'main';
+                    if (branchRaw.includes('->')) {
+                        branch = branchRaw.split('->')[1].split(',')[0].trim();
+                    } else if (branchRaw.trim()) {
+                        branch = branchRaw.trim();
+                    }
+
+                    return { branch, lastCommit: { hash, message: msg, date }, isGit: true };
                 } catch (e) { return { isGit: false }; }
             })(),
-            
-            // Task 2: Disk Size (with 3s timeout as it can be very slow)
+
+            // Disk size
             (async () => {
                 try {
-                    const { stdout } = await execPromise(`du -sh "${workingDir}" | awk '{print $1}'`, { timeout: 3000 });
-                    return stdout.trim();
+                    const { stdout } = await execPromise(
+                        `du -sh "${workingDir}" | awk '{print $1}'`,
+                        { timeout: 2000 }
+                    );
+                    return stdout.trim() || 'unknown';
                 } catch (e) { return 'unknown'; }
             })()
         ]);
 
-        if (gitData.isGit) {
-            gitInfo = {
-                branch: gitData.branch,
-                lastCommit: gitData.lastCommit
-            };
+        const gitResult = results[0].status === 'fulfilled' ? results[0].value : { isGit: false };
+        const duResult = results[1].status === 'fulfilled' ? results[1].value : 'unknown';
+
+        if (gitResult.isGit) {
+            gitInfo = { branch: gitResult.branch, lastCommit: gitResult.lastCommit };
         } else {
             gitInfo = { error: 'Not a git repository' };
         }
-        diskSize = duData;
-    } catch (e) {
-        gitInfo = { error: 'Fetch timeout' };
+        diskSize = duResult;
     }
 
     return {
         name,
-        repoUrl: meta.repoUrl !== 'Unknown' ? meta.repoUrl : (gitInfo.branch ? 'Local Git Repo' : 'N/A'),
-        branch: gitInfo.branch || meta.branch || 'main',
-        port: meta.port || 'N/A',
-        stack: meta.stack || 'Unknown',
-        entryFile: meta.entryFile || 'N/A',
-        envVars: meta.envVars || {},
-        deployedAt: meta.deployedAt,
-        lastUpdated: meta.lastUpdated,
-        serverPath: workingDir,
+        repoUrl: (meta && meta.repoUrl !== 'Unknown') ? meta.repoUrl : (gitInfo.branch ? 'Local Git' : 'N/A'),
+        branch: gitInfo.branch || (meta && meta.branch) || 'N/A',
+        port: (meta && meta.port) || 'N/A',
+        stack: (meta && meta.stack) || 'Unknown',
+        entryFile: (meta && meta.entryFile) || 'N/A',
+        envVars: (meta && meta.envVars) || {},
+        deployedAt: meta ? meta.deployedAt : null,
+        lastUpdated: meta ? meta.lastUpdated : null,
+        serverPath: workingDir || 'N/A',
         diskSize,
         git: gitInfo,
         process: pm2Info ? {

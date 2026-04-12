@@ -100,11 +100,20 @@ app.post('/api/projects', authenticateToken, async (req, res) => {
 
 // Project detail
 app.get('/api/projects/:name', authenticateToken, async (req, res) => {
+    // Set a hard timeout on the response
+    const timer = setTimeout(() => {
+        if (!res.headersSent) {
+            res.status(504).json({ error: 'Request timeout', name: req.params.name });
+        }
+    }, 8000);
+
     try {
         const detail = await pm2Manager.getProjectDetail(req.params.name);
-        res.json(detail);
+        clearTimeout(timer);
+        if (!res.headersSent) res.json(detail);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        clearTimeout(timer);
+        if (!res.headersSent) res.status(500).json({ error: err.message });
     }
 });
 
