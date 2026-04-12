@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * ╔═══════════════════════════════════════════════════════════════╗
- * ║  AQUOS LIVE DASHBOARD — Continuous Terminal Process Monitor   ║
- * ║  Run: node dashboard.js                                      ║
- * ║  Runs forever. Ctrl+C to exit.                               ║
+ * ║  AQUOS LIVE DASHBOARD — Ultra-Fast Terminal Process Monitor   ║
+ * ║  200ms render cycle • 100ms system stats • Literal live       ║
+ * ║  Run: node dashboard.js                                       ║
  * ╚═══════════════════════════════════════════════════════════════╝
  */
 
@@ -11,420 +11,367 @@ const pm2 = require('pm2');
 const os = require('os');
 const { exec } = require('child_process');
 const util = require('util');
+const path = require('path');
 const execPromise = util.promisify(exec);
 
-// ─── ANSI Color Codes ───────────────────────────────────────────────────────
+// ─── ANSI ───────────────────────────────────────────────────────────────────
 
+const ESC = '\x1b[';
 const c = {
-  reset: '\x1b[0m',
-  bold: '\x1b[1m',
-  dim: '\x1b[2m',
-  underline: '\x1b[4m',
-  blink: '\x1b[5m',
-  inverse: '\x1b[7m',
-  
-  black: '\x1b[30m',
-  red: '\x1b[31m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  blue: '\x1b[34m',
-  magenta: '\x1b[35m',
-  cyan: '\x1b[36m',
-  white: '\x1b[37m',
-  gray: '\x1b[90m',
-  
-  bgBlack: '\x1b[40m',
-  bgRed: '\x1b[41m',
-  bgGreen: '\x1b[42m',
-  bgYellow: '\x1b[43m',
-  bgBlue: '\x1b[44m',
-  bgMagenta: '\x1b[45m',
-  bgCyan: '\x1b[46m',
-  bgWhite: '\x1b[47m',
-  
-  // Bright
-  brightGreen: '\x1b[92m',
-  brightRed: '\x1b[91m',
-  brightYellow: '\x1b[93m',
-  brightBlue: '\x1b[94m',
-  brightCyan: '\x1b[96m',
-  brightWhite: '\x1b[97m',
+  reset: `${ESC}0m`, bold: `${ESC}1m`, dim: `${ESC}2m`,
+  red: `${ESC}31m`, green: `${ESC}32m`, yellow: `${ESC}33m`,
+  blue: `${ESC}34m`, magenta: `${ESC}35m`, cyan: `${ESC}36m`,
+  gray: `${ESC}90m`, white: `${ESC}37m`,
+  bRed: `${ESC}91m`, bGreen: `${ESC}92m`, bYellow: `${ESC}93m`,
+  bBlue: `${ESC}94m`, bCyan: `${ESC}96m`, bWhite: `${ESC}97m`,
+  bgBlue: `${ESC}44m`, bgGreen: `${ESC}42m`, bgRed: `${ESC}41m`,
+  bgYellow: `${ESC}43m`, bgBlack: `${ESC}40m`,
+  black: `${ESC}30m`,
 };
 
-// ─── State ──────────────────────────────────────────────────────────────────
+// ─── Cached State (updated at different rates) ──────────────────────────────
 
-let previousProcessNames = new Set();
-let eventLog = [];
-const MAX_EVENTS = 8;
-let tickCount = 0;
+let cachedProcesses = [];
+let cachedDisk = null;
+let cpuPercent = 0;
+let memPercent = 0;
+let memUsed = 0;
+let memTotal = 0;
 let previousCpus = os.cpus();
+let previousProcessNames = new Set();
+let previousProcessStatus = {};
+let eventLog = [];
+const MAX_EVENTS = 6;
 let startTime = Date.now();
+let frameCount = 0;
+let fps = 0;
+let lastFpsTime = Date.now();
+let lastFpsCount = 0;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function clearScreen() {
-  process.stdout.write('\x1b[2J\x1b[H'); // Clear + move cursor to top
+function pad(s, len, align = 'left') {
+  s = String(s);
+  if (s.length >= len) return s.substring(0, len);
+  const d = len - s.length;
+  if (align === 'right') return ' '.repeat(d) + s;
+  if (align === 'center') return ' '.repeat(Math.floor(d/2)) + s + ' '.repeat(Math.ceil(d/2));
+  return s + ' '.repeat(d);
 }
 
-function moveTo(row, col) {
-  process.stdout.write(`\x1b[${row};${col}H`);
+function fmtBytes(b) {
+  if (!b) return '0 B';
+  const u = ['B','KB','MB','GB'];
+  let i = 0, v = b;
+  while (v >= 1024 && i < 3) { v /= 1024; i++; }
+  return `${v.toFixed(i > 1 ? 1 : 0)} ${u[i]}`;
 }
 
-function hideCursor() {
-  process.stdout.write('\x1b[?25l');
-}
-
-function showCursor() {
-  process.stdout.write('\x1b[?25h');
-}
-
-function pad(str, len, align = 'left', padChar = ' ') {
-  str = String(str);
-  if (str.length >= len) return str.substring(0, len);
-  const diff = len - str.length;
-  if (align === 'right') return padChar.repeat(diff) + str;
-  if (align === 'center') {
-    const left = Math.floor(diff / 2);
-    const right = diff - left;
-    return padChar.repeat(left) + str + padChar.repeat(right);
-  }
-  return str + padChar.repeat(diff);
-}
-
-function formatBytes(bytes) {
-  if (!bytes || bytes === 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let i = 0;
-  let val = bytes;
-  while (val >= 1024 && i < units.length - 1) { val /= 1024; i++; }
-  return `${val.toFixed(i > 1 ? 1 : 0)} ${units[i]}`;
-}
-
-function formatUptime(ms) {
+function fmtUptime(ms) {
   if (!ms) return '—';
-  const diff = Date.now() - ms;
-  const days = Math.floor(diff / 86400000);
-  const hours = Math.floor((diff % 86400000) / 3600000);
-  const mins = Math.floor((diff % 3600000) / 60000);
-  const secs = Math.floor((diff % 60000) / 1000);
-  if (days > 0) return `${days}d ${hours}h ${mins}m`;
-  if (hours > 0) return `${hours}h ${mins}m ${secs}s`;
-  return `${mins}m ${secs}s`;
+  const d = Date.now() - ms;
+  const days = Math.floor(d / 86400000);
+  const h = Math.floor((d % 86400000) / 3600000);
+  const m = Math.floor((d % 3600000) / 60000);
+  const s = Math.floor((d % 60000) / 1000);
+  if (days > 0) return `${days}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  return `${m}m ${s}s`;
 }
 
-function formatDuration(seconds) {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
+function fmtDuration(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
   return `${h}h ${m}m ${s}s`;
 }
 
-function getCpuUsage() {
-  const currentCpus = os.cpus();
-  let idleDiff = 0;
-  let totalDiff = 0;
-  for (let i = 0; i < currentCpus.length; i++) {
-    const cur = currentCpus[i];
-    const prev = previousCpus[i];
-    if (!cur || !prev) continue;
-    for (const type in cur.times) {
-      totalDiff += cur.times[type] - prev.times[type];
-    }
-    idleDiff += cur.times.idle - prev.times.idle;
-  }
-  previousCpus = currentCpus;
-  if (totalDiff === 0) return 0;
-  return ((1 - idleDiff / totalDiff) * 100);
+function bar(pct, w = 24) {
+  const p = Math.max(0, Math.min(100, pct));
+  const filled = Math.round((p / 100) * w);
+  const empty = w - filled;
+  const col = p < 50 ? c.bGreen : p < 80 ? c.bYellow : c.bRed;
+  return `${col}${'█'.repeat(filled)}${c.gray}${'░'.repeat(empty)}${c.reset}`;
 }
 
-function progressBar(percent, width = 20, filledChar = '█', emptyChar = '░') {
-  const p = Math.max(0, Math.min(100, percent));
-  const filled = Math.round((p / 100) * width);
-  const empty = width - filled;
-  
-  let color;
-  if (p < 50) color = c.brightGreen;
-  else if (p < 80) color = c.brightYellow;
-  else color = c.brightRed;
-  
-  return `${color}${filledChar.repeat(filled)}${c.gray}${emptyChar.repeat(empty)}${c.reset}`;
-}
-
-function addEvent(type, message) {
-  const now = new Date();
-  const time = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  eventLog.unshift({ time, type, message });
-  if (eventLog.length > MAX_EVENTS) eventLog.pop();
+function miniBar(pct, w = 8) {
+  const p = Math.max(0, Math.min(100, pct));
+  const filled = Math.round((p / 100) * w);
+  const empty = w - filled;
+  const col = p < 50 ? c.bGreen : p < 80 ? c.bYellow : c.bRed;
+  return `${col}${'▮'.repeat(filled)}${c.gray}${'▯'.repeat(empty)}${c.reset}`;
 }
 
 function statusBadge(status) {
-  if (status === 'online') return `${c.bgGreen}${c.black}${c.bold} ONLINE ${c.reset}`;
-  if (status === 'stopped') return `${c.bgRed}${c.white}${c.bold} STOPPED ${c.reset}`;
-  if (status === 'errored') return `${c.bgRed}${c.white}${c.bold} ERROR  ${c.reset}`;
-  return `${c.bgYellow}${c.black}${c.bold} ${pad(status.toUpperCase(), 7)} ${c.reset}`;
+  if (status === 'online') return `${c.bgGreen}${c.black}${c.bold} ON ${c.reset}`;
+  if (status === 'stopped') return `${c.bgRed}${c.bWhite}${c.bold} OFF${c.reset}`;
+  if (status === 'errored') return `${c.bgRed}${c.bWhite}${c.bold} ERR${c.reset}`;
+  return `${c.bgYellow}${c.black}${c.bold} ??? ${c.reset}`;
 }
 
-async function getDiskStats() {
+function addEvent(type, msg) {
+  const t = new Date().toLocaleTimeString('en-US', { hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  eventLog.unshift({ t, type, msg });
+  if (eventLog.length > MAX_EVENTS) eventLog.pop();
+}
+
+// ─── Data Collectors (different rates) ──────────────────────────────────────
+
+/** 100ms — ultra fast, just CPU math */
+function updateSystemFast() {
+  const curCpus = os.cpus();
+  let idle = 0, total = 0;
+  for (let i = 0; i < curCpus.length; i++) {
+    const cur = curCpus[i], prev = previousCpus[i];
+    if (!cur || !prev) continue;
+    for (const t in cur.times) total += cur.times[t] - prev.times[t];
+    idle += cur.times.idle - prev.times.idle;
+  }
+  previousCpus = curCpus;
+  cpuPercent = total === 0 ? 0 : (1 - idle / total) * 100;
+
+  memTotal = os.totalmem();
+  const free = os.freemem();
+  memUsed = memTotal - free;
+  memPercent = (memUsed / memTotal) * 100;
+}
+
+/** 500ms — PM2 IPC call (heavier) */
+function updateProcesses() {
+  pm2.list((err, list) => {
+    if (err || !list) return;
+    
+    const newProcs = list;
+    const newNames = new Set(newProcs.map(p => p.name));
+    
+    // Detect additions
+    for (const name of newNames) {
+      if (!previousProcessNames.has(name)) addEvent('add', `${name} appeared`);
+    }
+    // Detect removals
+    for (const name of previousProcessNames) {
+      if (!newNames.has(name)) addEvent('rm', `${name} removed`);
+    }
+    // Detect status changes
+    for (const p of newProcs) {
+      const st = p.pm2_env?.status;
+      const prev = previousProcessStatus[p.name];
+      if (prev && prev !== st) addEvent('st', `${p.name}: ${prev} → ${st}`);
+    }
+    
+    previousProcessNames = newNames;
+    previousProcessStatus = {};
+    for (const p of newProcs) previousProcessStatus[p.name] = p.pm2_env?.status;
+    
+    // Sort: online first
+    newProcs.sort((a, b) => {
+      const ao = a.pm2_env?.status === 'online' ? 0 : 1;
+      const bo = b.pm2_env?.status === 'online' ? 0 : 1;
+      if (ao !== bo) return ao - bo;
+      return a.name.localeCompare(b.name);
+    });
+    
+    cachedProcesses = newProcs;
+  });
+}
+
+/** 10s — disk check (slow shell call) */
+async function updateDisk() {
+  if (os.platform() === 'win32') return;
   try {
-    const isWin = os.platform() === 'win32';
-    if (isWin) return null;
-    const { stdout } = await execPromise('df -k / | tail -1', { timeout: 2000 });
-    const parts = stdout.trim().split(/\s+/);
-    if (parts.length >= 5) {
-      const total = parseInt(parts[1]);
-      const used = parseInt(parts[2]);
-      if (!isNaN(total) && total > 0) {
-        return {
-          total: (total / (1024 * 1024)).toFixed(1),
-          used: (used / (1024 * 1024)).toFixed(1),
-          percentage: Math.round((used / total) * 100)
-        };
+    const { stdout } = await execPromise('df -k / | tail -1', { timeout: 3000 });
+    const p = stdout.trim().split(/\s+/);
+    if (p.length >= 5) {
+      const t = parseInt(p[1]), u = parseInt(p[2]);
+      if (!isNaN(t) && t > 0) {
+        cachedDisk = { total: (t/(1024*1024)).toFixed(1), used: (u/(1024*1024)).toFixed(1), pct: Math.round(u/t*100) };
       }
     }
   } catch (e) {}
-  return null;
 }
 
-// ─── Render ─────────────────────────────────────────────────────────────────
+// ─── Render (200ms — smooth 5fps) ───────────────────────────────────────────
 
-async function render() {
-  tickCount++;
+function render() {
+  frameCount++;
   
-  const cols = process.stdout.columns || 80;
-  const rows = process.stdout.rows || 24;
-  
-  // Get data
-  const cpuPercent = getCpuUsage();
-  const totalMem = os.totalmem();
-  const freeMem = os.freemem();
-  const usedMem = totalMem - freeMem;
-  const memPercent = (usedMem / totalMem) * 100;
-  const disk = await getDiskStats();
-  const dashUptime = (Date.now() - startTime) / 1000;
-  
-  // Get PM2 processes
-  const processes = await new Promise((resolve) => {
-    pm2.list((err, list) => {
-      if (err) return resolve([]);
-      resolve(list);
-    });
-  });
-  
-  // Detect changes
-  const currentNames = new Set(processes.map(p => p.name));
-  
-  for (const name of currentNames) {
-    if (!previousProcessNames.has(name)) {
-      addEvent('add', `${name} appeared`);
-    }
-  }
-  for (const name of previousProcessNames) {
-    if (!currentNames.has(name)) {
-      addEvent('remove', `${name} disappeared`);
-    }
+  // FPS counter
+  const now = Date.now();
+  if (now - lastFpsTime >= 1000) {
+    fps = frameCount - lastFpsCount;
+    lastFpsCount = frameCount;
+    lastFpsTime = now;
   }
   
-  // Check for status changes
-  for (const proc of processes) {
-    const status = proc.pm2_env?.status;
-    const prevStatus = previousProcessStatus?.[proc.name];
-    if (prevStatus && prevStatus !== status) {
-      addEvent('status', `${proc.name}: ${prevStatus} → ${status}`);
-    }
+  const W = Math.min(process.stdout.columns || 80, 90);
+  const dashUp = (now - startTime) / 1000;
+  const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit', fractionalSecondDigits: 1 });
+  
+  // Totals
+  let totalCpu = 0, totalMem = 0, onlineN = 0, stoppedN = 0;
+  for (const p of cachedProcesses) {
+    totalCpu += p.monit?.cpu || 0;
+    totalMem += p.monit?.memory || 0;
+    if (p.pm2_env?.status === 'online') onlineN++; else stoppedN++;
   }
   
-  // Store for next tick
-  previousProcessNames = currentNames;
-  previousProcessStatus = {};
-  for (const proc of processes) {
-    previousProcessStatus[proc.name] = proc.pm2_env?.status;
-  }
+  const lines = [];
+  const L = (s = '') => lines.push(s);
+  const hr = () => L(`  ${c.gray}${'─'.repeat(W - 4)}${c.reset}`);
   
-  // Sort: online first, then by name
-  processes.sort((a, b) => {
-    const aOnline = a.pm2_env?.status === 'online' ? 0 : 1;
-    const bOnline = b.pm2_env?.status === 'online' ? 0 : 1;
-    if (aOnline !== bOnline) return aOnline - bOnline;
-    return a.name.localeCompare(b.name);
-  });
+  // ── Header ──
+  L();
+  L(`  ${c.bgBlue}${c.bWhite}${c.bold}  ⚡ AQUOS LIVE  ${c.reset}  ${c.bWhite}${timeStr}${c.reset}  ${c.dim}${fps}fps  f:${frameCount}  up:${fmtDuration(dashUp)}${c.reset}`);
+  L();
   
-  // Total resource usage across all processes
-  let totalProcCpu = 0;
-  let totalProcMem = 0;
-  let onlineCount = 0;
-  let stoppedCount = 0;
-  
-  for (const p of processes) {
-    totalProcCpu += p.monit?.cpu || 0;
-    totalProcMem += p.monit?.memory || 0;
-    if (p.pm2_env?.status === 'online') onlineCount++;
-    else stoppedCount++;
-  }
-
-  // ── Build Output ──────────────────────────────────────────────────────────
-
-  let output = '';
-  const line = (s = '') => { output += s + '\n'; };
-  const hr = () => { line(`${c.gray}${'─'.repeat(Math.min(cols, 80))}${c.reset}`); };
-  const maxW = Math.min(cols, 80);
-  
-  // Header
-  line();
-  line(`  ${c.bgBlue}${c.brightWhite}${c.bold}  ⚡ AQUOS LIVE DASHBOARD  ${c.reset}  ${c.gray}${new Date().toLocaleString('en-US', { hour12: false })}${c.reset}`);
-  line(`  ${c.dim}Dashboard uptime: ${formatDuration(dashUptime)}  •  Refresh: ${tickCount}  •  Ctrl+C to exit${c.reset}`);
-  line();
-  
-  // System Overview
-  line(`  ${c.bold}${c.brightWhite}SYSTEM${c.reset}  ${c.gray}${os.hostname()} • ${os.arch()} • ${os.cpus().length} cores${c.reset}`);
-  hr();
-  
-  // CPU
+  // ── System Gauges (inline) ──
   const cpuStr = cpuPercent.toFixed(1);
-  line(`  ${c.cyan}CPU${c.reset}  ${progressBar(cpuPercent, 30)}  ${c.bold}${cpuStr}%${c.reset}  ${c.dim}(${os.cpus().length} cores)${c.reset}`);
+  const memStr = memPercent.toFixed(1);
+  L(`  ${c.cyan}${c.bold}CPU${c.reset} ${bar(cpuPercent, 20)} ${c.bold}${pad(cpuStr + '%', 7, 'right')}${c.reset}  ${c.magenta}${c.bold}RAM${c.reset} ${bar(memPercent, 20)} ${c.bold}${pad(memStr + '%', 7, 'right')}${c.reset}`);
   
-  // RAM
-  line(`  ${c.magenta}RAM${c.reset}  ${progressBar(memPercent, 30)}  ${c.bold}${memPercent.toFixed(1)}%${c.reset}  ${c.dim}${formatBytes(usedMem)} / ${formatBytes(totalMem)}${c.reset}`);
-  
-  // Disk
-  if (disk) {
-    line(`  ${c.green}DSK${c.reset}  ${progressBar(disk.percentage, 30)}  ${c.bold}${disk.percentage}%${c.reset}  ${c.dim}${disk.used} GB / ${disk.total} GB${c.reset}`);
+  if (cachedDisk) {
+    L(`  ${c.green}${c.bold}DSK${c.reset} ${bar(cachedDisk.pct, 20)} ${c.bold}${pad(cachedDisk.pct + '%', 7, 'right')}${c.reset}  ${c.dim}${cachedDisk.used}/${cachedDisk.total} GB${c.reset}  ${c.dim}│ ${fmtBytes(memUsed)}/${fmtBytes(memTotal)} RAM${c.reset}`);
+  } else {
+    L(`  ${c.dim}${fmtBytes(memUsed)} / ${fmtBytes(memTotal)} RAM  •  ${os.cpus().length} cores  •  ${os.hostname()}${c.reset}`);
   }
   
-  line();
+  L();
   
-  // Process Summary
-  const totalProcs = processes.length;
-  line(`  ${c.bold}${c.brightWhite}PROCESSES${c.reset}  ${c.brightGreen}${onlineCount} online${c.reset}  ${stoppedCount > 0 ? `${c.brightRed}${stoppedCount} stopped${c.reset}  ` : ''}${c.gray}${totalProcs} total${c.reset}`);
-  line(`  ${c.dim}Total CPU: ${totalProcCpu.toFixed(1)}%  •  Total RAM: ${formatBytes(totalProcMem)}${c.reset}`);
+  // ── Processes ──
+  L(`  ${c.bold}${c.bWhite}PROCESSES${c.reset}  ${c.bGreen}● ${onlineN}${c.reset}  ${stoppedN > 0 ? `${c.bRed}● ${stoppedN}${c.reset}  ` : ''}${c.dim}Σ ${cachedProcesses.length}  cpu:${totalCpu.toFixed(1)}%  mem:${fmtBytes(totalMem)}${c.reset}`);
   hr();
   
-  // Process Table Header
-  if (processes.length === 0) {
-    line();
-    line(`  ${c.dim}No PM2 processes running.${c.reset}`);
-    line(`  ${c.dim}Deploy via panel or: pm2 start app.js${c.reset}`);
+  if (cachedProcesses.length === 0) {
+    L(`  ${c.dim}(no processes)${c.reset}`);
   } else {
-    // Header
-    line(`  ${c.bold}${c.gray}${pad('NAME', 18)} ${pad('STATUS', 9)} ${pad('CPU', 8, 'right')} ${pad('MEM', 10, 'right')} ${pad('↻', 4, 'right')} ${pad('UPTIME', 14)}${c.reset}`);
-    line(`  ${c.gray}${pad('', 18, 'left', '·')} ${pad('', 9, 'left', '·')} ${pad('', 8, 'left', '·')} ${pad('', 10, 'left', '·')} ${pad('', 4, 'left', '·')} ${pad('', 14, 'left', '·')}${c.reset}`);
+    // Header row
+    L(`  ${c.gray}${c.bold}${pad('NAME',16)} ${pad('ST',4)} ${pad('CPU',7,'right')} ${pad('MEM',9,'right')} ${pad('↻',3,'right')} ${pad('PORT',6,'right')} ${pad('UPTIME',12)}${c.reset}`);
     
-    // Process Rows
-    for (const proc of processes) {
-      const name = proc.name;
-      const status = proc.pm2_env?.status || 'unknown';
-      const cpu = proc.monit?.cpu || 0;
-      const mem = proc.monit?.memory || 0;
-      const restarts = proc.pm2_env?.restart_time || 0;
-      const uptime = proc.pm2_env?.pm_uptime;
+    for (const p of cachedProcesses) {
+      const nm = p.name;
+      const st = p.pm2_env?.status || '?';
+      const cpu = p.monit?.cpu || 0;
+      const mem = p.monit?.memory || 0;
+      const rst = p.pm2_env?.restart_time || 0;
+      const upt = p.pm2_env?.pm_uptime;
+      const port = p.pm2_env?.env?.PORT || p.pm2_env?.PORT || '';
       
-      const nameColor = status === 'online' ? c.brightWhite : c.gray;
-      const cpuColor = cpu > 50 ? c.brightRed : cpu > 20 ? c.brightYellow : c.brightGreen;
-      const memColor = mem > 200 * 1024 * 1024 ? c.brightRed : mem > 100 * 1024 * 1024 ? c.brightYellow : c.brightGreen;
-      const restartColor = restarts > 10 ? c.brightRed : restarts > 3 ? c.brightYellow : c.dim;
+      const nmCol = st === 'online' ? c.bWhite : c.gray;
+      const cpuCol = cpu > 50 ? c.bRed : cpu > 20 ? c.bYellow : c.bGreen;
+      const memCol = mem > 200*1024*1024 ? c.bRed : mem > 100*1024*1024 ? c.bYellow : c.bGreen;
+      const rstCol = rst > 10 ? c.bRed : rst > 3 ? c.bYellow : c.dim;
       
-      line(`  ${nameColor}${c.bold}${pad(name, 18)}${c.reset} ${statusBadge(status)} ${cpuColor}${pad(cpu.toFixed(1) + '%', 8, 'right')}${c.reset} ${memColor}${pad(formatBytes(mem), 10, 'right')}${c.reset} ${restartColor}${pad(String(restarts), 4, 'right')}${c.reset} ${c.dim}${pad(formatUptime(uptime), 14)}${c.reset}`);
+      // Main row
+      L(`  ${nmCol}${c.bold}${pad(nm,16)}${c.reset} ${statusBadge(st)} ${cpuCol}${pad(cpu.toFixed(1)+'%',7,'right')}${c.reset} ${memCol}${pad(fmtBytes(mem),9,'right')}${c.reset} ${rstCol}${pad(String(rst),3,'right')}${c.reset} ${c.bCyan}${pad(port ? ':'+port : '—',6,'right')}${c.reset} ${c.dim}${pad(fmtUptime(upt),12)}${c.reset}`);
       
-      // Show port if detectable
-      const port = proc.pm2_env?.env?.PORT || proc.pm2_env?.PORT;
-      const script = proc.pm2_env?.pm_exec_path ? require('path').basename(proc.pm2_env.pm_exec_path) : '';
-      const interpreter = proc.pm2_env?.exec_interpreter || '';
-      const stack = interpreter.includes('node') ? 'node' : interpreter.includes('python') ? 'python' : interpreter === 'none' ? 'binary' : interpreter;
+      // CPU micro-bar on second line
+      const script = p.pm2_env?.pm_exec_path ? path.basename(p.pm2_env.pm_exec_path) : '';
+      const interp = p.pm2_env?.exec_interpreter || '';
+      const stack = interp.includes('node') ? 'node' : interp.includes('python') ? 'py' : interp === 'none' ? 'bin' : interp.substring(0,4);
+      const cwd = p.pm2_env?.pm_cwd || '';
+      const shortCwd = cwd.length > 30 ? '…' + cwd.slice(-29) : cwd;
       
-      const detailParts = [];
-      if (port) detailParts.push(`port:${port}`);
-      if (script) detailParts.push(script);
-      if (stack) detailParts.push(stack);
-      if (proc.pm2_env?.pm_cwd) detailParts.push(proc.pm2_env.pm_cwd);
-      
-      if (detailParts.length > 0) {
-        const detailStr = detailParts.join(' │ ');
-        line(`  ${c.dim}  └─ ${detailStr.substring(0, maxW - 8)}${c.reset}`);
-      }
+      L(`  ${c.dim}  └ ${miniBar(cpu,6)} ${stack}/${script}  ${shortCwd}${c.reset}`);
     }
   }
   
-  line();
+  L();
   
-  // Event Log
+  // ── Events ──
   if (eventLog.length > 0) {
-    line(`  ${c.bold}${c.brightWhite}EVENTS${c.reset}  ${c.dim}recent changes${c.reset}`);
+    L(`  ${c.bold}${c.bWhite}EVENTS${c.reset}`);
     hr();
-    for (const evt of eventLog) {
-      let icon, color;
-      if (evt.type === 'add') { icon = '＋'; color = c.brightGreen; }
-      else if (evt.type === 'remove') { icon = '＋'; color = c.brightRed; }
-      else if (evt.type === 'status') { icon = '◆'; color = c.brightYellow; }
-      else { icon = '●'; color = c.dim; }
-      
-      line(`  ${c.dim}${evt.time}${c.reset}  ${color}${icon} ${evt.message}${c.reset}`);
+    for (const e of eventLog) {
+      const icon = e.type === 'add' ? `${c.bGreen}＋` : e.type === 'rm' ? `${c.bRed}－` : e.type === 'st' ? `${c.bYellow}◆` : `${c.dim}●`;
+      L(`  ${c.dim}${e.t}${c.reset} ${icon} ${e.msg}${c.reset}`);
     }
-    line();
+    L();
   }
   
-  // Footer
-  line(`  ${c.dim}─── aquos-panel/dashboard • ${os.platform()} ${os.release()} ───${c.reset}`);
+  // ── Footer ──
+  L(`  ${c.dim}aquos-panel • ${os.platform()}/${os.arch()} • ${os.cpus().length}c • Ctrl+C exit${c.reset}`);
+  L();
   
-  // Write output
-  clearScreen();
-  process.stdout.write(output);
+  // ── Write (cursor home, NO clear — prevents flicker) ──
+  const output = lines.join('\n');
+  
+  // Move cursor home + clear each line as we go (flicker-free)
+  process.stdout.write(`${ESC}H`); // cursor home
+  
+  // Write content + clear remainder of each line
+  for (const line of lines) {
+    process.stdout.write(line + `${ESC}K\n`); // \x1b[K = clear to end of line
+  }
+  
+  // Clear any leftover lines from previous render
+  const totalRows = process.stdout.rows || 40;
+  const remaining = totalRows - lines.length - 1;
+  for (let i = 0; i < remaining; i++) {
+    process.stdout.write(`${ESC}K\n`);
+  }
 }
-
-// ─── Process Status Tracking ────────────────────────────────────────────────
-
-let previousProcessStatus = {};
 
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 async function main() {
-  // Connect to PM2
-  await new Promise((resolve, reject) => {
-    pm2.connect((err) => {
-      if (err) {
-        console.error('Failed to connect to PM2. Is PM2 installed?');
-        console.error(err.message);
-        process.exit(1);
-      }
-      resolve();
-    });
+  await new Promise((res, rej) => {
+    pm2.connect(err => { if (err) { console.error('PM2 connect failed:', err.message); process.exit(1); } res(); });
   });
   
-  hideCursor();
+  // Hide cursor
+  process.stdout.write(`${ESC}?25l`);
+  // Clear screen once at start
+  process.stdout.write(`${ESC}2J${ESC}H`);
+  
   addEvent('info', 'Dashboard started');
   
-  // Initial render
-  await render();
+  // Initial data fetch
+  updateSystemFast();
+  updateProcesses();
+  await updateDisk();
   
-  // Continuous update loop — every 2 seconds
-  const interval = setInterval(async () => {
-    try {
-      await render();
-    } catch (e) {
-      // Silently continue on render errors
-    }
-  }, 2000);
+  // ── Tiered update loops ──
   
-  // Handle resize
-  process.stdout.on('resize', async () => {
-    try { await render(); } catch (e) {}
+  // System stats: every 100ms (ultra cheap — just os.cpus() math)
+  const sysInterval = setInterval(updateSystemFast, 100);
+  
+  // PM2 process list: every 500ms (IPC call)
+  const pm2Interval = setInterval(updateProcesses, 500);
+  
+  // Disk: every 10s (shell exec)
+  const diskInterval = setInterval(updateDisk, 10000);
+  
+  // Render: every 200ms (5fps — flicker-free, feels live)
+  const renderInterval = setInterval(() => {
+    try { render(); } catch (e) { /* continue */ }
+  }, 200);
+  
+  // Handle terminal resize
+  process.stdout.on('resize', () => {
+    process.stdout.write(`${ESC}2J${ESC}H`); // Full clear on resize
+    try { render(); } catch (e) {}
   });
   
-  // Graceful exit
+  // Graceful shutdown
   const cleanup = () => {
-    clearInterval(interval);
-    showCursor();
-    clearScreen();
-    console.log('\n  Aquos Dashboard terminated.\n');
+    clearInterval(sysInterval);
+    clearInterval(pm2Interval);
+    clearInterval(diskInterval);
+    clearInterval(renderInterval);
+    process.stdout.write(`${ESC}?25h`); // show cursor
+    process.stdout.write(`${ESC}2J${ESC}H`); // clear
+    console.log('\n  ⚡ Aquos Dashboard terminated.\n');
     pm2.disconnect();
     process.exit(0);
   };
   
   process.on('SIGINT', cleanup);
   process.on('SIGTERM', cleanup);
-  process.on('exit', () => showCursor());
+  process.on('exit', () => process.stdout.write(`${ESC}?25h`));
 }
 
-main().catch(err => {
-  showCursor();
-  console.error('Dashboard error:', err);
+main().catch(e => {
+  process.stdout.write(`${ESC}?25h`);
+  console.error('Fatal:', e);
   process.exit(1);
 });
