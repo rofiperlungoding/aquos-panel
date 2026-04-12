@@ -173,10 +173,10 @@ app.post('/api/system/update', async (req, res) => {
     res.json({ message: 'Update initiated' });
     setTimeout(() => {
         // Run from repo root so git pull works
-        exec('git pull origin master && cd backend && npm install && pm2 reload aquos-panel', 
+        exec('git pull origin master && pm2 restart aquos-panel', 
             { cwd: REPO_ROOT },
             (err) => {
-                if (err) exec('pm2 restart aquos-panel');
+                if (err) console.error('Update restart failed', err);
             }
         );
     }, 1000);
