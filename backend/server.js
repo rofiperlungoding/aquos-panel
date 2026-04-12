@@ -184,7 +184,7 @@ app.post('/api/system/update', async (req, res) => {
 
 // ─── SPA Fallback (must be after all /api routes) ───────────────────────────
 
-app.get('*', (req, res) => {
+app.get(/.*/, (req, res) => {
     const indexPath = path.join(__dirname, '../frontend/dist/index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
