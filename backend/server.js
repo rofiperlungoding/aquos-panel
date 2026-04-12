@@ -172,13 +172,17 @@ app.get('/api/system/check-update', async (req, res) => {
 app.post('/api/system/update', async (req, res) => {
     res.json({ message: 'Update initiated' });
     setTimeout(() => {
-        // Force sync with GitHub (ignoring local uncommitted changes to UI/Server) and restart via npx
-        exec('git fetch origin master && git reset --hard origin/master && npx pm2 restart aquos-panel', 
-            { cwd: REPO_ROOT },
-            (err, stdout, stderr) => {
-                if (err) console.error('Update restart failed', err, stderr);
+        // 1. Hard reset to latest code
+        // 2. Rebuild frontend (crucial!)
+        // 3. Restart backend via PM2
+        const updateCmd = 'git fetch origin master && git reset --hard origin/master && cd frontend && npm run build && cd .. && npx pm2 restart aquos-panel';
+        
+        exec(updateCmd, { cwd: REPO_ROOT }, (err, stdout, stderr) => {
+            if (err) {
+                console.error('Update failed:', err);
+                console.error('Stderr:', stderr);
             }
-        );
+        });
     }, 1000);
 });
 

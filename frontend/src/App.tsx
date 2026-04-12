@@ -361,7 +361,7 @@ function AppContent() {
                     <div className="bg-white border px-4 py-2 rounded-2xl shadow-sm text-xs font-bold flex items-center gap-2">
                        <Clock className="w-4 h-4 text-[#1a73e8]" /> 
                        {(() => {
-                          const s = stats.system.uptime;
+                          const s = stats?.system?.uptime || 0;
                           const h = Math.floor(s / 3600);
                           const m = Math.floor((s % 3600) / 60);
                           const sec = Math.floor(s % 60);
