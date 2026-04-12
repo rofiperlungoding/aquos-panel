@@ -63,7 +63,7 @@ async function getStats() {
                     used: (usedMem / (1024**2)).toFixed(0),
                     free: (freeMem / (1024**2)).toFixed(0)
                 },
-                uptime: os.uptime(),
+                uptime: process.uptime(), // Return the process/panel uptime in seconds
                 disk: diskRaw
             },
             panel: {
