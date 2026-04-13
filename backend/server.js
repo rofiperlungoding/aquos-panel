@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const http = require('http');
+const zlib = require('zlib');
 const { WebSocketServer } = require('ws');
 let pty;
 try {
@@ -37,10 +38,51 @@ function authenticateToken(req, res, next) {
     });
 }
 
+// ─── Performance: Gzip Compression ─────────────────────────────────────────
+// Manual gzip middleware (no extra dependency needed)
+
+app.use((req, res, next) => {
+    const acceptEncoding = req.headers['accept-encoding'] || '';
+    if (!acceptEncoding.includes('gzip')) return next();
+    
+    // Only compress JSON API responses, not static files (those are handled by express.static)
+    const originalJson = res.json.bind(res);
+    res.json = (data) => {
+        const raw = JSON.stringify(data);
+        
+        // Only gzip if response is > 1KB
+        if (raw.length < 1024) return originalJson(data);
+        
+        zlib.gzip(Buffer.from(raw), (err, compressed) => {
+            if (err) return originalJson(data);
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Content-Encoding', 'gzip');
+            res.setHeader('Vary', 'Accept-Encoding');
+            res.end(compressed);
+        });
+    };
+    next();
+});
+
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../frontend/dist'), { setHeaders: (res, path) => { if (path.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache'); } }));
 
+// ─── Static files with aggressive caching ───────────────────────────────────
+
+app.use(express.static(path.join(__dirname, '../frontend/dist'), { 
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) {
+            // HTML: no cache (so updates are picked up)
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        } else if (filePath.match(/\.(js|css)$/)) {
+            // JS/CSS with hash in filename: cache 1 year (immutable)
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else if (filePath.match(/\.(png|jpg|gif|svg|ico|woff2?)$/)) {
+            // Assets: cache 30 days
+            res.setHeader('Cache-Control', 'public, max-age=2592000');
+        }
+    }
+}));
 
 // Init PM2 connection
 pm2Manager.connect();
@@ -219,7 +261,7 @@ app.get(/.*/, (req, res) => {
     }
 });
 
-// ─── WebSocket for Terminal, Logs & Deploy Progress ─────────────────────────
+// ─── WebSocket for Terminal, Logs, Deploy & Live Stats ──────────────────────
 
 wss.on('connection', (ws, req) => {
     const urlParams = new URLSearchParams(req.url.split('?')[1]);
@@ -301,6 +343,39 @@ wss.on('connection', (ws, req) => {
         ws.on('close', () => {
             if (ptyProcess) ptyProcess.kill();
         });
+
+    } else if (type === 'live-stats') {
+        // ─── LIVE STATS via WebSocket (replaces HTTP polling) ───────────────
+        let alive = true;
+        
+        const pushStats = async () => {
+            if (!alive || ws.readyState !== 1) return;
+            
+            try {
+                const [stats, projects] = await Promise.all([
+                    systemStats.getStats(),
+                    pm2Manager.listProjects()
+                ]);
+                
+                if (ws.readyState === 1) {
+                    ws.send(JSON.stringify({ 
+                        type: 'live-stats', 
+                        stats, 
+                        projects 
+                    }));
+                }
+            } catch (e) {
+                // Don't crash the loop
+            }
+            
+            if (alive) setTimeout(pushStats, 2000); // Push every 2s
+        };
+        
+        // Start pushing immediately
+        pushStats();
+        
+        ws.on('close', () => { alive = false; });
+        ws.on('error', () => { alive = false; });
 
     } else if (type === 'deploy') {
         // Stream deploy progress events to the client

@@ -121,6 +121,7 @@ function AppContent() {
   };
 
   const fetchData = async () => {
+    // We keep this just for manual refreshes if needed, but the WS handles the auto-updates
     if (!token) return;
     try {
       const pRes = await axios.get(`${API_URL}/projects?t=${Date.now()}`);
@@ -136,15 +137,6 @@ function AppContent() {
           cpu: h.cpu,
           ram: h.ram
         })));
-      } else {
-        setHistory(prev => {
-          const entry = {
-            time: new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-            cpu: parseFloat(newStats.system.cpu),
-            ram: newStats.system.ram.percentage
-          };
-          return [...prev, entry].slice(-30);
-        });
       }
     } catch (e: any) {
       if (e.response?.status === 401 || e.response?.status === 403) {
@@ -191,29 +183,57 @@ function AppContent() {
   };
 
   useEffect(() => {
-    if (token) {
-        fetchData();
-        const intv = setInterval(fetchData, 3000);
-        
-        // Local ticker for uptime to make it look "alive"
-        const ticker = setInterval(() => {
-          setStats((prev: any) => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              system: {
-                ...prev.system,
-                uptime: prev.system.uptime + 1
-              }
-            };
-          });
-        }, 1000);
+    if (!token) return;
 
-        return () => {
-          clearInterval(intv);
-          clearInterval(ticker);
+    fetchData(); // Initial fetch
+
+    // WebSocket for live stats (drastically reduces HTTP overhead)
+    const ws = new WebSocket(`${WS_URL}?type=live-stats&token=${token}`);
+    
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'live-stats') {
+          setStats(msg.stats);
+          setProjects(msg.projects);
+          
+          if (msg.stats.history && msg.stats.history.length > 0) {
+            setHistory(msg.stats.history.map((h: any) => ({
+              time: new Date(h.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+              cpu: h.cpu,
+              ram: h.ram
+            })));
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing live stats', e);
+      }
+    };
+
+    ws.onclose = (e) => {
+      if (e.code === 1008) {
+         handleLogout();
+      }
+    };
+
+    // Local ticker for uptime to make it look "alive" instantly
+    const ticker = setInterval(() => {
+      setStats((prev: any) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          system: {
+            ...prev.system,
+            uptime: prev.system.uptime + 1
+          }
         };
-    }
+      });
+    }, 1000);
+
+    return () => {
+      ws.close();
+      clearInterval(ticker);
+    };
   }, [token]);
 
   const handleDeploy = async (e: React.FormEvent) => {
