@@ -381,9 +381,15 @@ function AppContent() {
         {activeTab === 'compute' && (
           <div className="flex-1 overflow-y-auto p-8 space-y-6">
              <header className="flex justify-between items-center">
-                <div>
-                  <h1 className="text-2xl font-black text-[#202124] tracking-tight">System Infrastructure</h1>
-                  <p className="text-[12px] text-[#5f6368] font-bold opacity-60">Real-time health of global hardware nodes</p>
+                <div className="flex items-center gap-4">
+                  <div>
+                    <h1 className="text-2xl font-black text-[#202124] tracking-tight">System Infrastructure</h1>
+                    <p className="text-[12px] text-[#5f6368] font-bold opacity-60">Real-time health of global hardware nodes</p>
+                  </div>
+                  <div className="bg-[#fdf2f2] text-[#ea4335] px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 border border-[#fce8e8]">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    Warden Active
+                  </div>
                 </div>
                 <div className="flex gap-2">
                     <div className="bg-white border px-4 py-2 rounded-2xl shadow-sm text-xs font-bold flex items-center gap-2">

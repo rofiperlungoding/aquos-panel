@@ -88,6 +88,10 @@ app.use(express.static(path.join(__dirname, '../frontend/dist'), {
 // Init PM2 connection
 pm2Manager.connect();
 
+// Start Autonomous Warden Process
+const autonomousWarden = require('./services/autonomousWarden');
+autonomousWarden.startAutonomousMonitoring();
+
 // Directory where projects will be stored
 const PROJECTS_DIR = path.join(__dirname, 'projects');
 if (!fs.existsSync(PROJECTS_DIR)) {
