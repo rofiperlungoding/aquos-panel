@@ -7,7 +7,21 @@
     <title>AQUOS Console | Global Operations</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Instant Loading Splash Screen -->
+      <style>
+        body { margin: 0; background-color: #0c0c0c; display: flex; align-items: center; justify-content: center; height: 100vh; font-family: system-ui, sans-serif; }
+        .splash-container { text-align: center; color: #fff; }
+        .spinner { width: 40px; height: 40px; border: 3px solid rgba(255, 255, 255, 0.1); border-radius: 50%; border-top-color: #1a73e8; animation: spin 1s ease-in-out infinite; margin: 0 auto 16px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .text { font-weight: 800; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; color: #aaa; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+      </style>
+      <div class="splash-container">
+        <div class="spinner"></div>
+        <div class="text">Connecting to Live Node...</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

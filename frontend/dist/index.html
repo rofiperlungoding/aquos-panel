@@ -5,10 +5,31 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AQUOS Console | Global Operations</title>
-    <script type="module" crossorigin src="/assets/index-DHq-aOVc.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DJB7NmkA.css">
+    <script type="module" crossorigin src="/assets/index-Bk3STiv6.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-Dw2cE7zH.js">
+    <link rel="modulepreload" crossorigin href="/assets/charts-CoTNSg88.js">
+    <link rel="modulepreload" crossorigin href="/assets/modules-72QhsM7E.js">
+    <link rel="modulepreload" crossorigin href="/assets/icons-BCMENiR7.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-CgKgMgkV.js">
+    <link rel="modulepreload" crossorigin href="/assets/terminal-B85Jsg94.js">
+    <link rel="stylesheet" crossorigin href="/assets/terminal-TdnZ7DQy.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-BXD9tv7S.css">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Instant Loading Splash Screen -->
+      <style>
+        body { margin: 0; background-color: #0c0c0c; display: flex; align-items: center; justify-content: center; height: 100vh; font-family: system-ui, sans-serif; }
+        .splash-container { text-align: center; color: #fff; }
+        .spinner { width: 40px; height: 40px; border: 3px solid rgba(255, 255, 255, 0.1); border-radius: 50%; border-top-color: #1a73e8; animation: spin 1s ease-in-out infinite; margin: 0 auto 16px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .text { font-weight: 800; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; color: #aaa; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+      </style>
+      <div class="splash-container">
+        <div class="spinner"></div>
+        <div class="text">Connecting to Live Node...</div>
+      </div>
+    </div>
   </body>
 </html>
