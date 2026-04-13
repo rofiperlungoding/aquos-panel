@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import ReactMarkdown from 'react-markdown';
 import {
   X,
   GitBranch,
@@ -15,7 +16,8 @@ import {
   Settings,
   Info,
   RefreshCcw,
-  Globe
+  Globe,
+  Sparkles
 } from 'lucide-react';
 import { useToast } from './Toast';
 
@@ -34,6 +36,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectName, onClose }) =
   const [envEntries, setEnvEntries] = useState<{ key: string; value: string }[]>([]);
   const [updating, setUpdating] = useState(false);
   const [savingEnv, setSavingEnv] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const logRef = useRef<HTMLPreElement>(null);
   const { addToast } = useToast();
 
@@ -110,6 +114,21 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectName, onClose }) =
       addToast('error', 'Failed to save env', e.response?.data?.error || e.message);
     } finally {
       setSavingEnv(false);
+    }
+  };
+
+  const handleAnalyzeError = async () => {
+    if (!projectName) return;
+    setIsAnalyzing(true);
+    setAiAnalysis(null);
+    try {
+      const res = await axios.post(`${API_URL}/projects/${projectName}/analyze-error`);
+      setAiAnalysis(res.data.analysis);
+      addToast('success', 'Analysis Complete', 'AQUOS Sentinel has diagnosed the issue.');
+    } catch (e: any) {
+      addToast('error', 'AI Analysis failed', e.response?.data?.error || e.message);
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -263,11 +282,36 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectName, onClose }) =
                   </pre>
                   {logs.stderr && logs.stderr !== '(no error logs)' && (
                     <>
-                      <h3 className="text-[11px] font-black uppercase tracking-widest text-[#ea4335]">Errors</h3>
+                      <div className="flex justify-between items-center mt-6 mb-2">
+                        <h3 className="text-[11px] font-black uppercase tracking-widest text-[#ea4335]">Errors</h3>
+                        <button 
+                          onClick={handleAnalyzeError}
+                          disabled={isAnalyzing}
+                          className="flex items-center gap-2 bg-[#fdf2f2] hover:bg-[#fce8e8] text-[#ea4335] px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all shadow-sm disabled:opacity-50"
+                        >
+                          {isAnalyzing ? <RefreshCcw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                          {isAnalyzing ? 'Analyzing Logs...' : 'Ask AI Sentinel'}
+                        </button>
+                      </div>
                       <pre className="bg-[#2d1b1b] text-[#f8a8a8] p-5 rounded-[20px] text-[11px] font-mono leading-relaxed overflow-auto max-h-[300px] whitespace-pre-wrap break-all">
                         {logs.stderr}
                       </pre>
                     </>
+                  )}
+
+                  {/* AI Sentinel Analysis Result */}
+                  {aiAnalysis && (
+                    <div className="mt-6 bg-gradient-to-br from-[#eff3ff] to-[#f8faff] p-6 rounded-[24px] border border-[#d2e3fc] shadow-sm animate-[slideUp_0.3s_ease-out]">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-8 h-8 rounded-full bg-[#1a73e8] text-white flex items-center justify-center shadow-lg shadow-[#1a73e8]/30">
+                          <Sparkles className="w-4 h-4" />
+                        </div>
+                        <h3 className="text-sm font-black text-[#1a73e8]">AQUOS Sentinel Diagnosis</h3>
+                      </div>
+                      <div className="prose prose-sm max-w-none prose-headings:font-black prose-headings:text-[#202124] prose-p:text-[#5f6368] prose-p:font-bold prose-code:text-[#1a73e8] prose-code:bg-[#e8f0fe] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-pre:bg-[#1a1c22] prose-pre:text-white prose-pre:p-4 prose-pre:rounded-xl">
+                        <ReactMarkdown>{aiAnalysis}</ReactMarkdown>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}

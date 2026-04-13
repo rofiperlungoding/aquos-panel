@@ -15,6 +15,7 @@ const path = require('path');
 const fs = require('fs');
 const pm2Manager = require('./services/pm2Manager');
 const systemStats = require('./services/systemStats');
+const aiSentinel = require('./services/aiSentinel');
 
 const jwt = require('jsonwebtoken');
 
@@ -165,6 +166,23 @@ app.get('/api/projects/:name/logs', authenticateToken, async (req, res) => {
         const lines = parseInt(req.query.lines) || 100;
         const logs = await pm2Manager.getProjectLogs(req.params.name, lines);
         res.json(logs);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// AI Error Analysis via Mistral Codestral
+app.post('/api/projects/:name/analyze-error', authenticateToken, async (req, res) => {
+    try {
+        // Fetch last 100 lines of stderr and stdout
+        const logs = await pm2Manager.getProjectLogs(req.params.name, 100);
+        // Fetch current system stats
+        const stats = await systemStats.getStats();
+        
+        let combinedLogs = `[STDERR]\n${logs.stderr}\n\n[STDOUT]\n${logs.stdout}`;
+        
+        const analysis = await aiSentinel.analyzeError(req.params.name, combinedLogs, stats);
+        res.json({ analysis });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
